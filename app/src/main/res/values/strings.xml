@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MobileReader</string>
+    <string name="library_title">My library</string>
+    <string name="empty_library_title">Your library is empty</string>
+    <string name="empty_library_message">Books you add will appear here.</string>
+</resources>
