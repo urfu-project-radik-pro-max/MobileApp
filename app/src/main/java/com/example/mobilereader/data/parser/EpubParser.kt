@@ -114,17 +114,17 @@ object EpubParser {
         parseMetadata(file, ReaderResourceLimits.DEFAULT)
 
     internal fun parseMetadata(file: File, limits: ReaderResourceLimits): BookMetadata {
-        ZipFile(file).use { zip ->
-            val budget = ArchiveResourceBudget(zip, limits)
-            val opfPath = findOpfPath(zip, budget, limits)
+        ZipFile(file).use { epubArchive ->
+            val budget = ArchiveResourceBudget(epubArchive, limits)
+            val packagePath = findOpfPath(epubArchive, budget, limits)
                 ?: throw IllegalArgumentException("Not a valid EPUB: missing OPF")
-            val opfDir = opfPath.substringBeforeLast('/', "")
-            val opf = parseXml(zip, opfPath, budget, limits)
+            val packageDirectory = packagePath.substringBeforeLast('/', "")
+            val packageDocument = parseXml(epubArchive, packagePath, budget, limits)
 
-            val title = opf.selectFirst("metadata > dc|title")?.text()?.trim()
+            val title = packageDocument.selectFirst("metadata > dc|title")?.text()?.trim()
 
 
-            val refinements = opf.select("metadata > meta[refines][property]")
+            val refinements = packageDocument.select("metadata > meta[refines][property]")
             fun refined(id: String, property: String): String? {
                 if (id.isEmpty()) return null
                 return refinements.firstOrNull {
@@ -135,7 +135,7 @@ object EpubParser {
 
             val authors = mutableListOf<String>()
             val translators = mutableListOf<String>()
-            for (creator in opf.select("metadata > dc|creator")) {
+            for (creator in packageDocument.select("metadata > dc|creator")) {
                 val name = creator.text().trim().takeIf { it.isNotEmpty() } ?: continue
                 val role = creator.attr("opf:role").ifEmpty { refined(creator.id(), "role").orEmpty() }
                 when {
@@ -144,7 +144,7 @@ object EpubParser {
                     else -> Unit
                 }
             }
-            for (contributor in opf.select("metadata > dc|contributor")) {
+            for (contributor in packageDocument.select("metadata > dc|contributor")) {
                 val name = contributor.text().trim().takeIf { it.isNotEmpty() } ?: continue
                 val role = contributor.attr("opf:role")
                     .ifEmpty { refined(contributor.id(), "role").orEmpty() }
@@ -152,7 +152,7 @@ object EpubParser {
             }
 
             var isbn: String? = null
-            for (identifier in opf.select("metadata > dc|identifier")) {
+            for (identifier in packageDocument.select("metadata > dc|identifier")) {
                 val text = identifier.text().trim().takeIf { it.isNotEmpty() } ?: continue
                 isbn = when {
                     identifier.attr("opf:scheme").equals("ISBN", ignoreCase = true) -> text
@@ -166,15 +166,15 @@ object EpubParser {
 
             var series: String? = null
             var seriesNumber: Float? = null
-            opf.selectFirst("metadata > meta[name=calibre:series]")
+            packageDocument.selectFirst("metadata > meta[name=calibre:series]")
                 ?.attr("content")?.trim()?.takeIf { it.isNotEmpty() }
                 ?.let { name ->
                     series = name
-                    seriesNumber = opf.selectFirst("metadata > meta[name=calibre:series_index]")
+                    seriesNumber = packageDocument.selectFirst("metadata > meta[name=calibre:series_index]")
                         ?.attr("content")?.trim()?.toFloatOrNull()
                 }
             if (series == null) {
-                for (meta in opf.select("metadata > meta[property=belongs-to-collection]")) {
+                for (meta in packageDocument.select("metadata > meta[property=belongs-to-collection]")) {
                     val type = refined(meta.id(), "collection-type")
                     if (type != null && !type.equals("series", ignoreCase = true)) continue
                     val name = meta.text().trim().takeIf { it.isNotEmpty() } ?: continue
@@ -184,10 +184,10 @@ object EpubParser {
                 }
             }
 
-            val items = manifestItems(opf)
-            val coverHref = findCoverHref(opf, items)
+            val items = manifestItems(packageDocument)
+            val coverHref = findCoverHref(packageDocument, items)
             val coverBytes = coverHref
-                ?.let { zipEntry(zip, resolvePath(opfDir, it)) }
+                ?.let { zipEntry(epubArchive, resolvePath(packageDirectory, it)) }
                 ?.let { budget.readOptional(it, limits.maxCoverBytes, "EPUB cover") }
 
             return BookMetadata(
@@ -195,20 +195,20 @@ object EpubParser {
                 author = authors.firstOrNull(),
                 coverBytes = coverBytes,
                 authors = authors,
-                genres = opf.select("metadata > dc|subject")
+                genres = packageDocument.select("metadata > dc|subject")
                     .map { it.text().trim() }.filter { it.isNotEmpty() },
                 series = series,
                 seriesNumber = seriesNumber,
-                publisher = opf.selectFirst("metadata > dc|publisher")?.text()
+                publisher = packageDocument.selectFirst("metadata > dc|publisher")?.text()
                     ?.trim()?.takeIf { it.isNotEmpty() },
-                year = opf.selectFirst("metadata > dc|date")?.text()
+                year = packageDocument.selectFirst("metadata > dc|date")?.text()
                     ?.let { Regex("""\d{4}""").find(it)?.value },
                 isbn = isbn,
                 translators = translators,
 
-                description = opf.selectFirst("metadata > dc|description")?.text()
+                description = packageDocument.selectFirst("metadata > dc|description")?.text()
                     ?.let { Jsoup.parse(it).text().trim() }?.takeIf { it.isNotEmpty() },
-                language = opf.selectFirst("metadata > dc|language")?.text()
+                language = packageDocument.selectFirst("metadata > dc|language")?.text()
                     ?.trim()?.takeIf { it.isNotEmpty() },
             )
         }
@@ -232,22 +232,22 @@ object EpubParser {
         imagesDir: File,
         limits: ReaderResourceLimits,
     ): BookContent {
-        ZipFile(file).use { zip ->
-            val budget = ArchiveResourceBudget(zip, limits)
-            val opfPath = findOpfPath(zip, budget, limits)
+        ZipFile(file).use { epubArchive ->
+            val budget = ArchiveResourceBudget(epubArchive, limits)
+            val packagePath = findOpfPath(epubArchive, budget, limits)
                 ?: throw IllegalArgumentException("Not a valid EPUB: missing OPF")
-            val opfDir = opfPath.substringBeforeLast('/', "")
-            val opf = parseXml(zip, opfPath, budget, limits)
+            val packageDirectory = packagePath.substringBeforeLast('/', "")
+            val packageDocument = parseXml(epubArchive, packagePath, budget, limits)
 
-            val items = manifestItems(opf)
-            val toc = chapterTitles(zip, opf, items, opfDir, budget, limits)
+            val items = manifestItems(packageDocument)
+            val toc = chapterTitles(epubArchive, packageDocument, items, packageDirectory, budget, limits)
             val titlesByPath = toc.byPath
-            val packageRendition = EpubRenditionParser.parsePackage(opf)
+            val packageRendition = EpubRenditionParser.parsePackage(packageDocument)
             val publisherDocuments = mutableMapOf<String, PublisherDocumentInfo>()
             val metadataLanguage = LanguageTag.normalize(
-                opf.selectFirst("metadata > dc|language")?.text(),
+                packageDocument.selectFirst("metadata > dc|language")?.text(),
             )
-            val fb2EpubConversion = opf.select("metadata > meta[name]").any {
+            val fb2EpubConversion = packageDocument.select("metadata > meta[name]").any {
                 it.attr("name").equals("FB2EPUB.version", ignoreCase = true)
             }
 
@@ -274,34 +274,34 @@ object EpubParser {
             val fonts = mutableMapOf<String, BookFont>()
 
 
-            val encryption = parseEncryption(zip, budget, limits)
+            val encryption = parseEncryption(epubArchive, budget, limits)
             val fontKeys = if (encryption.isEmpty()) {
                 FontKeys(null, emptyList())
             } else {
-                fontKeysFrom(opf)
+                fontKeysFrom(packageDocument)
             }
 
-            val spine = spineItems(opf, items)
+            val spine = spineItems(packageDocument, items)
 
 
             val linearPaths = spine.asSequence()
                 .filter { it.linear }
-                .map { resolvePath(opfDir, it.item.href) }
+                .map { resolvePath(packageDirectory, it.item.href) }
                 .toSet()
             val processedLinkedPaths = mutableSetOf<String>()
             for (spineItem in spine) {
                 val item = spineItem.item
-                val chapterPath = resolvePath(opfDir, item.href)
+                val chapterPath = resolvePath(packageDirectory, item.href)
 
 
                 if (!spineItem.linear && chapterPath in linearPaths) continue
                 val linear = spineItem.linear
                 if (!linear && !processedLinkedPaths.add(chapterPath)) continue
-                val entry = zipEntry(zip, chapterPath) ?: continue
+                val entry = zipEntry(epubArchive, chapterPath) ?: continue
 
                 if (item.mediaType.equals("image/svg+xml", ignoreCase = true)) {
                     val imagePath = extractImage(
-                        zip,
+                        epubArchive,
                         chapterPath,
                         imagesDir,
                         extractedImages,
@@ -310,7 +310,7 @@ object EpubParser {
                         required = linear,
                     ) ?: continue
                     val svgDocument = parseOptionalXml(
-                        zip,
+                        epubArchive,
                         chapterPath,
                         budget,
                         limits.maxImageBytes,
@@ -364,7 +364,7 @@ object EpubParser {
                 val chapterDir = chapterPath.substringBeforeLast('/', "")
 
                 val doc = parseChapterDocument(
-                    zip,
+                    epubArchive,
                     entry,
                     budget,
                     limits,
@@ -389,7 +389,7 @@ object EpubParser {
 
                 val resolver = cssResolverFor(
                     doc,
-                    zip,
+                    epubArchive,
                     chapterDir,
                     cssCache,
                     resolverCache,
@@ -400,7 +400,7 @@ object EpubParser {
                 if (resolver != null) {
                     extractFonts(
                         resolver,
-                        zip,
+                        epubArchive,
                         imagesDir,
                         fonts,
                         encryption,
@@ -412,7 +412,7 @@ object EpubParser {
                 val mapper = HtmlMapper(
                     resolveImage = { src ->
                         extractImage(
-                            zip,
+                            epubArchive,
                             resolvePath(chapterDir, src),
                             imagesDir,
                             extractedImages,
@@ -614,9 +614,9 @@ object EpubParser {
                 linkedDocumentTargets = linkedLocations.filterKeys { it in linkTargets },
                 navigation = navigation,
                 publisherPublication = buildPublisherPublication(
-                    zip = zip,
-                    opfPath = opfPath,
-                    opfDir = opfDir,
+                    epubArchive = epubArchive,
+                    packagePath = packagePath,
+                    packageDirectory = packageDirectory,
                     packageRendition = packageRendition,
                     spine = spine,
                     items = items,
@@ -675,7 +675,7 @@ object EpubParser {
 
 
     private fun parseChapterDocument(
-        zip: ZipFile,
+        epubArchive: ZipFile,
         entry: ZipEntry,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
@@ -698,7 +698,7 @@ object EpubParser {
     }
 
 
-    private fun spineItems(opf: Document, items: List<ManifestItem>): List<SpineItem> {
+    private fun spineItems(packageDocument: Document, items: List<ManifestItem>): List<SpineItem> {
         val itemsById = items.associateBy { it.id }
 
         fun renderable(item: ManifestItem): ManifestItem? {
@@ -716,7 +716,7 @@ object EpubParser {
             return null
         }
 
-        val refs = opf.select("spine > itemref")
+        val refs = packageDocument.select("spine > itemref")
         if (refs.isNotEmpty()) {
             val resolved = refs.mapIndexedNotNull { ordinal, ref ->
                 itemsById[ref.attr("idref")]?.let(::renderable)?.let { rendered ->
@@ -748,9 +748,9 @@ object EpubParser {
 
 
     private fun buildPublisherPublication(
-        zip: ZipFile,
-        opfPath: String,
-        opfDir: String,
+        epubArchive: ZipFile,
+        packagePath: String,
+        packageDirectory: String,
         packageRendition: EpubRenditionParser.PackageRendition,
         spine: List<SpineItem>,
         items: List<ManifestItem>,
@@ -760,14 +760,14 @@ object EpubParser {
         limits: ReaderResourceLimits = ReaderResourceLimits.DEFAULT,
     ): PublisherPublication? {
         val resources = publisherResources(
-            zip = zip,
-            opfDir = opfDir,
+            epubArchive = epubArchive,
+            packageDirectory = packageDirectory,
             items = items,
             encryption = encryption,
             limits = limits,
         )
         val publisherSpine = spine.mapNotNull { occurrence ->
-            val path = resolvePublisherPath(opfDir, occurrence.item.href) ?: return@mapNotNull null
+            val path = resolvePublisherPath(packageDirectory, occurrence.item.href) ?: return@mapNotNull null
             val resource = resources[path] ?: return@mapNotNull null
             if (!isPublisherDocument(resource.mediaType)) return@mapNotNull null
 
@@ -804,7 +804,7 @@ object EpubParser {
         return PublisherPublication(
             format = packageRendition.format,
             profile = packageRendition.profile,
-            source = PublisherSourceDescriptor.EpubArchive(packagePath = opfPath),
+            source = PublisherSourceDescriptor.EpubArchive(packagePath = packagePath),
             defaults = packageRendition.defaults,
             pageProgression = packageRendition.pageProgression,
             spine = publisherSpine,
@@ -814,16 +814,16 @@ object EpubParser {
 
 
     private fun publisherResources(
-        zip: ZipFile,
-        opfDir: String,
+        epubArchive: ZipFile,
+        packageDirectory: String,
         items: List<ManifestItem>,
         encryption: Map<String, String>,
         limits: ReaderResourceLimits,
     ): Map<String, PublisherResource> {
         val resources = linkedMapOf<String, PublisherResource>()
         for (item in items) {
-            val path = resolvePublisherPath(opfDir, item.href) ?: continue
-            val entry = zipEntry(zip, path)?.takeUnless { it.isDirectory } ?: continue
+            val path = resolvePublisherPath(packageDirectory, item.href) ?: continue
+            val entry = zipEntry(epubArchive, path)?.takeUnless { it.isDirectory } ?: continue
             val mediaType = item.mediaType.substringBefore(';').trim().lowercase(Locale.ROOT)
             if (!isPublisherResource(mediaType)) continue
             val declaredLimit = publisherResourceLimit(mediaType, limits)
@@ -972,7 +972,7 @@ object EpubParser {
 
     private fun cssResolverFor(
         doc: Document,
-        zip: ZipFile,
+        epubArchive: ZipFile,
         chapterDir: String,
         cssCache: MutableMap<String, String?>,
         resolverCache: MutableMap<String, CssResolver>,
@@ -1016,7 +1016,7 @@ object EpubParser {
             val text = if (cssCache.containsKey(path)) {
                 cssCache[path]
             } else {
-                zipEntry(zip, path)?.let { entry ->
+                zipEntry(epubArchive, path)?.let { entry ->
                     budget.readOptional(
                         entry,
                         limits.maxStylesheetBytes,
@@ -1173,9 +1173,9 @@ object EpubParser {
         val adobe: List<ByteArray>,
     )
 
-    private fun fontKeysFrom(opf: Document): FontKeys {
-        val identifiers = opf.select("metadata > dc|identifier")
-        val uniqueId = opf.selectFirst("package")?.attr("unique-identifier").orEmpty()
+    private fun fontKeysFrom(packageDocument: Document): FontKeys {
+        val identifiers = packageDocument.select("metadata > dc|identifier")
+        val uniqueId = packageDocument.selectFirst("package")?.attr("unique-identifier").orEmpty()
         val unique = identifiers.firstOrNull { uniqueId.isNotEmpty() && it.attr("id") == uniqueId }
             ?: identifiers.firstOrNull()
         return FontKeys(
@@ -1190,11 +1190,11 @@ object EpubParser {
 
 
     private fun parseEncryption(
-        zip: ZipFile,
+        epubArchive: ZipFile,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
     ): Map<String, String> {
-        val entry = zipEntry(zip, "META-INF/encryption.xml") ?: return emptyMap()
+        val entry = zipEntry(epubArchive, "META-INF/encryption.xml") ?: return emptyMap()
         val bytes = budget.readOptional(
             entry,
             limits.maxPackageXmlBytes,
@@ -1232,7 +1232,7 @@ object EpubParser {
 
     private fun extractFonts(
         resolver: CssResolver,
-        zip: ZipFile,
+        epubArchive: ZipFile,
         imagesDir: File,
         out: MutableMap<String, BookFont>,
         encryption: Map<String, String>,
@@ -1259,7 +1259,7 @@ object EpubParser {
             }
             if (target.exists() && !target.delete()) continue
 
-            val entry = zipEntry(zip, entryPath) ?: continue
+            val entry = zipEntry(epubArchive, entryPath) ?: continue
             var bytes = budget.readOptional(
                 entry,
                 limits.maxFontBytes,
@@ -1314,11 +1314,11 @@ object EpubParser {
     }
 
     private fun findOpfPath(
-        zip: ZipFile,
+        epubArchive: ZipFile,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
     ): String? {
-        val container = zipEntry(zip, "META-INF/container.xml")
+        val container = zipEntry(epubArchive, "META-INF/container.xml")
         if (container != null) {
             val bytes = budget.readRequired(
                 container,
@@ -1331,7 +1331,7 @@ object EpubParser {
                 ?.let { return it }
         }
 
-        return zip.entries().asSequence()
+        return epubArchive.entries().asSequence()
             .firstOrNull {
                 !it.isDirectory && isSafeArchivePath(it.name) &&
                     it.name.endsWith(".opf", ignoreCase = true)
@@ -1340,32 +1340,32 @@ object EpubParser {
     }
 
     private fun parseXml(
-        zip: ZipFile,
+        epubArchive: ZipFile,
         path: String,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
     ): Document {
-        val entry = zipEntry(zip, path) ?: throw IllegalArgumentException("Missing $path in EPUB")
+        val entry = zipEntry(epubArchive, path) ?: throw IllegalArgumentException("Missing $path in EPUB")
         val bytes = budget.readRequired(entry, limits.maxPackageXmlBytes, "EPUB package $path")
         return Jsoup.parse(bytes.inputStream(), "UTF-8", "", Parser.xmlParser())
     }
 
     private fun parseOptionalXml(
-        zip: ZipFile,
+        epubArchive: ZipFile,
         path: String,
         budget: ArchiveResourceBudget,
         maxBytes: Long,
         label: String,
     ): Document? {
-        val entry = zipEntry(zip, path) ?: return null
+        val entry = zipEntry(epubArchive, path) ?: return null
         val bytes = budget.readOptional(entry, maxBytes, label) ?: return null
         return runCatching {
             Jsoup.parse(bytes.inputStream(), "UTF-8", "", Parser.xmlParser())
         }.getOrNull()
     }
 
-    private fun manifestItems(opf: Document): List<ManifestItem> =
-        opf.select("manifest > item").map {
+    private fun manifestItems(packageDocument: Document): List<ManifestItem> =
+        packageDocument.select("manifest > item").map {
             ManifestItem(
                 id = it.attr("id"),
                 href = it.attr("href"),
@@ -1375,11 +1375,11 @@ object EpubParser {
             )
         }
 
-    private fun findCoverHref(opf: Document, items: List<ManifestItem>): String? {
+    private fun findCoverHref(packageDocument: Document, items: List<ManifestItem>): String? {
 
         items.firstOrNull { it.hasProperty("cover-image") }?.let { return it.href }
 
-        val coverId = opf.selectFirst("metadata > meta[name=cover]")?.attr("content")
+        val coverId = packageDocument.selectFirst("metadata > meta[name=cover]")?.attr("content")
         if (!coverId.isNullOrEmpty()) {
             items.firstOrNull { it.id == coverId }?.let { return it.href }
         }
@@ -1406,10 +1406,10 @@ object EpubParser {
 
 
     private fun chapterTitles(
-        zip: ZipFile,
-        opf: Document,
+        epubArchive: ZipFile,
+        packageDocument: Document,
         items: List<ManifestItem>,
-        opfDir: String,
+        packageDirectory: String,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
     ): TocIndex {
@@ -1427,9 +1427,9 @@ object EpubParser {
         }
 
         items.firstOrNull { it.hasProperty("nav") }?.let { navItem ->
-            val navPath = resolvePath(opfDir, navItem.href)
+            val navPath = resolvePath(packageDirectory, navItem.href)
             val navDir = navPath.substringBeforeLast('/', "")
-            zipEntry(zip, navPath)?.let { entry ->
+            zipEntry(epubArchive, navPath)?.let { entry ->
                 val bytes = budget.readOptional(
                     entry,
                     limits.maxPackageXmlBytes,
@@ -1476,16 +1476,16 @@ object EpubParser {
         }
 
         if (ordered.isEmpty()) {
-            val declaredNcx = opf.selectFirst("spine")?.attr("toc")
+            val declaredNcx = packageDocument.selectFirst("spine")?.attr("toc")
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { id -> items.firstOrNull { it.id == id } }
             val ncxItem = declaredNcx
                 ?.takeIf { it.mediaType == "application/x-dtbncx+xml" }
                 ?: items.firstOrNull { it.mediaType == "application/x-dtbncx+xml" }
             if (ncxItem != null) {
-                val ncxPath = resolvePath(opfDir, ncxItem.href)
-                val ncxDir = ncxPath.substringBeforeLast('/', "")
-                zipEntry(zip, ncxPath)?.let { entry ->
+                val navigationPath = resolvePath(packageDirectory, ncxItem.href)
+                val ncxDir = navigationPath.substringBeforeLast('/', "")
+                zipEntry(epubArchive, navigationPath)?.let { entry ->
                     val bytes = budget.readOptional(
                         entry,
                         limits.maxPackageXmlBytes,
@@ -1555,7 +1555,7 @@ object EpubParser {
     }
 
     private fun extractImage(
-        zip: ZipFile,
+        epubArchive: ZipFile,
         entryPath: String,
         imagesDir: File,
         cache: MutableMap<String, String>,
@@ -1564,7 +1564,7 @@ object EpubParser {
         required: Boolean = false,
     ): String? {
         cache[entryPath]?.let { return it }
-        val entry = zipEntry(zip, entryPath) ?: return null
+        val entry = zipEntry(epubArchive, entryPath) ?: return null
         val target = File(
             imagesDir,
             resourceCacheFileName("epub", entryPath, entryPath),
@@ -1594,12 +1594,12 @@ object EpubParser {
     }
 
 
-    private fun zipEntry(zip: ZipFile, path: String): ZipEntry? {
+    private fun zipEntry(epubArchive: ZipFile, path: String): ZipEntry? {
         if (!isSafeArchivePath(path)) return null
-        zip.getEntry(path)?.let { return it }
+        epubArchive.getEntry(path)?.let { return it }
         val decoded = decodeUrlPath(path)
         if (decoded != null && decoded != path && isSafeArchivePath(decoded)) {
-            zip.getEntry(decoded)?.let { return it }
+            epubArchive.getEntry(decoded)?.let { return it }
         }
         return null
     }
