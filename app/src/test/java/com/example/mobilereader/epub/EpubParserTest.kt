@@ -78,6 +78,45 @@ class EpubParserTest {
         }
     }
 
+    @Test
+    fun readsChaptersInSpineOrderAndSkipsNonLinearItem() {
+        val bookFile = temporaryFolder.newFile("chapters.epub")
+        writeBook(
+            bookFile,
+            """
+                <package>
+                  <metadata><title>Reading Order</title></metadata>
+                  <manifest>
+                    <item id="second" href="second.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="extra" href="extra.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="first" href="first.xhtml" media-type="application/xhtml+xml"/>
+                  </manifest>
+                  <spine>
+                    <itemref idref="first"/>
+                    <itemref idref="extra" linear="no"/>
+                    <itemref idref="second"/>
+                  </spine>
+                </package>
+            """.trimIndent(),
+            mapOf(
+                "OPS/first.xhtml" to
+                    "<html><head><title>First</title></head><body><h1>Opening</h1><p>One page</p></body></html>".toByteArray(),
+                "OPS/second.xhtml" to
+                    "<html><body><p>Later page</p></body></html>".toByteArray(),
+                "OPS/extra.xhtml" to
+                    "<html><body><p>Not in reading order</p></body></html>".toByteArray(),
+            ),
+        )
+
+        val bookContent = EpubParser.parseContent(bookFile)
+
+        assertEquals(2, bookContent.chapters.size)
+        assertEquals("First", bookContent.chapters[0].title)
+        assertEquals("Opening", (bookContent.chapters[0].elements[0] as EpubContentElement.Heading).text.text)
+        assertEquals("One page", (bookContent.chapters[0].elements[1] as EpubContentElement.Paragraph).text.text)
+        assertEquals("Later page", (bookContent.chapters[1].elements[0] as EpubContentElement.Paragraph).text.text)
+    }
+
     private fun writeBook(
         bookFile: File,
         packageXml: String,

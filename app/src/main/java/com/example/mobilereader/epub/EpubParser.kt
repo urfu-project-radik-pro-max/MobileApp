@@ -8,6 +8,8 @@ import java.io.ByteArrayInputStream
 import java.io.File
 
 object EpubParser {
+    fun parseContent(bookFile: File): EpubBookContent = EpubContentParser.parseContent(bookFile)
+
     fun parseMetadata(bookFile: File): EpubMetadata = EpubArchive(bookFile).use { epubArchive ->
         val packagePath = findPackagePath(epubArchive)
         val packageDirectory = packagePath.substringBeforeLast('/', "")
