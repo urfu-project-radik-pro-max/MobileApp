@@ -50,7 +50,7 @@ class EpubResourceHardeningTest {
     @Test
     fun `only valid leading top level imports load archive sheets`() {
         val root = """
-            /* @import "comment.css"; */
+            ${'/'}* @import "comment.css"; *${'/'}
             @import "real.css";
             .fake::before { content: "@import 'string.css';"; }
             @import "late.css";

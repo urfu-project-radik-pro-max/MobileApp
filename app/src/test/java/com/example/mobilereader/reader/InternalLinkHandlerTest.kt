@@ -1,0 +1,152 @@
+package com.example.mobilereader.reader
+
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.graphics.Color
+import com.example.mobilereader.data.model.BookContent
+import com.example.mobilereader.data.model.Chapter
+import com.example.mobilereader.data.model.ContentElement
+import com.example.mobilereader.data.model.LinkedDocument
+import com.example.mobilereader.data.model.LinkedDocumentTarget
+import com.example.mobilereader.data.model.NoteDocument
+import com.example.mobilereader.data.model.FOOTNOTE_TAG
+import com.example.mobilereader.ui.reader.FootnoteHandler
+import com.example.mobilereader.ui.reader.hasSequentialContent
+import com.example.mobilereader.ui.reader.withFootnoteLinks
+import com.example.mobilereader.ui.reader.withSearchHighlight
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class InternalLinkHandlerTest {
+
+    @Test
+    fun `redecorating contents keeps link identity and routes each destination`() {
+        val raw = AnnotatedString.Builder().apply {
+            append("Chapter one Chapter two")
+            addStringAnnotation(com.example.mobilereader.data.model.LINK_TAG, "one", 0, 11)
+            addStringAnnotation(com.example.mobilereader.data.model.LINK_TAG, "two", 12, 23)
+        }.toAnnotatedString()
+        val visited = mutableListOf<Int>()
+        val handler = FootnoteHandler(
+            notes = emptyMap(), onNote = { _, _ -> },
+            linkTargets = mapOf("one" to 10, "two" to 40), onNavigate = { visited += it },
+        )
+        val first = raw.withFootnoteLinks(Color.Blue, handler)
+        val repeated = raw.withFootnoteLinks(Color.Blue, handler)
+
+        assertEquals("scroll recomposition must not invalidate the text layout", first, repeated)
+        val links = first.getLinkAnnotations(0, first.length).map { it.item as LinkAnnotation.Clickable }
+        assertSame(links[0].linkInteractionListener, links[1].linkInteractionListener)
+        links.forEach { it.linkInteractionListener!!.onClick(it) }
+        assertEquals(listOf(10, 40), visited)
+        assertEquals("theme changes still recolor links", Color.Red,
+            (raw.withFootnoteLinks(Color.Red, handler).getLinkAnnotations(0, raw.length).first().item
+                as LinkAnnotation.Clickable).styles!!.style!!.color)
+    }
+
+    private fun note(text: String) = NoteDocument(
+        listOf(ContentElement.Paragraph(AnnotatedString(text))),
+    )
+
+    @Test
+    fun `handler routes linear and linked document targets without confusing notes`() {
+        val linked = LinkedDocumentTarget("OPS/extra.xhtml", 7)
+        var note: String? = null
+        var linear: Int? = null
+        var nonLinear: LinkedDocumentTarget? = null
+        val handler = FootnoteHandler(
+            notes = mapOf("note" to note("Note body")),
+            onNote = { _, document -> note = document.text },
+            linkTargets = mapOf("linear" to 13),
+            onNavigate = { linear = it },
+            linkedDocumentTargets = mapOf("linked" to linked),
+            onNavigateLinked = { nonLinear = it },
+        )
+
+        handler.open("linked")
+        assertEquals(linked, nonLinear)
+        assertNull(linear)
+        assertNull(note)
+
+        handler.open("linear")
+        assertEquals(13, linear)
+
+        handler.open("note")
+        assertEquals("Note body", note)
+    }
+
+    @Test
+    fun `note semantics take precedence if a destination is also renderable`() {
+        var linkedOpens = 0
+        var noteOpens = 0
+        val handler = FootnoteHandler(
+            notes = mapOf("same" to note("Popup")),
+            onNote = { _, _ -> noteOpens++ },
+            linkedDocumentTargets = mapOf(
+                "same" to LinkedDocumentTarget("OPS/notes.xhtml", 0),
+            ),
+            onNavigateLinked = { linkedOpens++ },
+        )
+
+        handler.open("same")
+
+        assertEquals(1, noteOpens)
+        assertEquals(0, linkedOpens)
+    }
+
+    @Test
+    fun `linked-only publication has no sequential reader coordinate space`() {
+        val linkedOnly = BookContent(
+            chapters = emptyList(),
+            linkedDocuments = mapOf(
+                "OPS/extra.xhtml" to LinkedDocument(
+                    "OPS/extra.xhtml",
+                    "Extra",
+                    listOf(ContentElement.Paragraph(AnnotatedString("Linked"))),
+                ),
+            ),
+        )
+        assertFalse(linkedOnly.hasSequentialContent())
+
+        val readable = BookContent(
+            chapters = listOf(
+                Chapter("Empty", emptyList()),
+                Chapter("Main", listOf(ContentElement.Paragraph(AnnotatedString("Main")))),
+            ),
+        )
+        assertTrue(readable.hasSequentialContent())
+    }
+
+    @Test
+    fun `rich cell text transformations preserve metrics and annotations`() {
+        val raw = AnnotatedString.Builder().apply {
+            append("See note and searchable text")
+            addStringAnnotation(FOOTNOTE_TAG, "note", 4, 8)
+        }.toAnnotatedString()
+        val handler = FootnoteHandler(
+            notes = mapOf("note" to note("Body")),
+            onNote = { _, _ -> },
+        )
+
+        val display = raw
+            .withFootnoteLinks(Color.Blue, handler)
+            .withSearchHighlight("searchable", Color.Yellow)
+
+        assertEquals(raw.text, display.text)
+        assertEquals(raw.length, display.length)
+        assertEquals(
+            listOf("note"),
+            display.getStringAnnotations(FOOTNOTE_TAG, 0, display.length).map { it.item },
+        )
+        assertTrue(
+            display.spanStyles.any {
+                it.item.background == Color.Yellow &&
+                    display.text.substring(it.start, it.end) == "searchable"
+            },
+        )
+    }
+}

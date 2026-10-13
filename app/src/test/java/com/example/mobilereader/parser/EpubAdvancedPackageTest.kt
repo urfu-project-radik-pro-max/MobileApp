@@ -133,7 +133,7 @@ class EpubAdvancedPackageTest {
                     @import "print.css" print;
                     @import "speech.css" speech;
                     @import "not-screen.css" not screen;
-                    /* @import "commented.css"; */
+                    ${'/'}* @import "commented.css"; *${'/'}
                     p { font-style: italic; }
                 """.trimIndent(),
                 "styles/nested/theme.css" to ".imported { text-align: center; }",
