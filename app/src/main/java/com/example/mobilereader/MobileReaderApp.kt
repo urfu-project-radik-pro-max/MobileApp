@@ -23,14 +23,15 @@ class MobileReaderApp : Application(), SingletonImageLoader.Factory {
         ComposeFoundationFlags.isNewContextMenuEnabled = false
     }
 
-    override fun newImageLoader(context: PlatformContext): ImageLoader = ImageLoader.Builder(context)
-        .components {
-            add(SvgDecoder.Factory())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                add(AnimatedImageDecoder.Factory())
-            } else {
-                add(GifDecoder.Factory())
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context)
+            .components {
+                add(SvgDecoder.Factory())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(AnimatedImageDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
             }
-        }
-        .build()
+            .build()
 }

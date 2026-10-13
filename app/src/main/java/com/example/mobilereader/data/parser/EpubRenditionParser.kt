@@ -74,7 +74,7 @@ internal object EpubRenditionParser {
             ?.let(::parseSpread)
 
         val amazonFixed = format == PublisherFormat.EPUB_2 &&
-            metadata.nameContent("fixed-layout")?.equals("true", ignoreCase = true) == true
+                metadata.nameContent("fixed-layout")?.equals("true", ignoreCase = true) == true
         val amazonViewport = if (format == PublisherFormat.EPUB_2) {
             metadata.nameContent("original-resolution")?.let(::parseOriginalResolution)
         } else {
@@ -167,7 +167,7 @@ internal object EpubRenditionParser {
         val manifest = manifestId.trim()
         require(manifest.isNotEmpty())
         return "s${spineOrdinal.toString().padStart(6, '0')}:" +
-            "r${ref.length}:$ref:m${manifest.length}:$manifest"
+                "r${ref.length}:$ref:m${manifest.length}:$manifest"
     }
 
     private fun parseLayout(value: String): RenditionLayout? = when (value.normalized()) {
@@ -355,8 +355,8 @@ internal object EpubRenditionParser {
     private const val SVG_SEPARATOR = "(?:\\s*,\\s*|\\s+)"
     private val SVG_VIEW_BOX = Regex(
         "^\\s*($SVG_NUMBER)$SVG_SEPARATOR" +
-            "($SVG_NUMBER)$SVG_SEPARATOR" +
-            "($SVG_NUMBER)$SVG_SEPARATOR" +
-            "($SVG_NUMBER)\\s*$",
+                "($SVG_NUMBER)$SVG_SEPARATOR" +
+                "($SVG_NUMBER)$SVG_SEPARATOR" +
+                "($SVG_NUMBER)\\s*$",
     )
 }

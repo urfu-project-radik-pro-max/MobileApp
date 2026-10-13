@@ -116,7 +116,7 @@ data class PublisherBoxSpan(
         return copy(
             startElement = maxOf(startElement, start) - start + destinationOffset,
             endElementExclusive = minOf(endElementExclusive, endExclusive) - start +
-                destinationOffset,
+                    destinationOffset,
             clear = if (includesStart) clear else PublisherClear.NONE,
             drawStart = drawStart && includesStart,
             drawEnd = drawEnd && includesEnd,

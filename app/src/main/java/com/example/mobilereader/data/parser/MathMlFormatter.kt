@@ -139,7 +139,7 @@ internal class MathMlFormatter(
         val embeddedPresentation = element.children()
             .firstOrNull {
                 it.mathName() == "annotation-xml" &&
-                    it.attr("encoding").lowercase() in PRESENTATION_ENCODINGS
+                        it.attr("encoding").lowercase() in PRESENTATION_ENCODINGS
             }
             ?.children()
             ?.firstOrNull { hasRenderablePresentation(it, depth + 1) }
@@ -169,14 +169,15 @@ internal class MathMlFormatter(
         val token = directText(element).trim()
         if (token.isEmpty()) return
         val isSeparator = element.attr("separator").equals("true", ignoreCase = true) ||
-            token in TRAILING_SPACE_OPERATORS
+                token in TRAILING_SPACE_OPERATORS
         val isFence = element.attr("fence").equals("true", ignoreCase = true) ||
-            token in FENCE_OPERATORS
+                token in FENCE_OPERATORS
         when {
             isSeparator -> out.text("$token ")
             isFence -> out.text(token)
             token in PADDED_OPERATORS || token.any { it in PADDED_OPERATOR_CHARS } ->
                 out.text(" $token ")
+
             else -> out.text(token)
         }
     }
@@ -259,11 +260,15 @@ internal class MathMlFormatter(
         val denominator = children.getOrNull(1)
 
         out.pushStyle(NUMERATOR_STYLE)
-        if (numerator != null) appendGrouped(numerator, out, depth + 1) else out.text(MISSING_OPERAND)
+        if (numerator != null) appendGrouped(numerator, out, depth + 1) else out.text(
+            MISSING_OPERAND
+        )
         out.pop()
         out.text(FRACTION_SLASH)
         out.pushStyle(DENOMINATOR_STYLE)
-        if (denominator != null) appendGrouped(denominator, out, depth + 1) else out.text(MISSING_OPERAND)
+        if (denominator != null) appendGrouped(denominator, out, depth + 1) else out.text(
+            MISSING_OPERAND
+        )
         out.pop()
     }
 
@@ -439,7 +444,7 @@ internal class MathMlFormatter(
         return when (element.mathName()) {
             "annotation", "annotation-xml", "mphantom", "maligngroup", "malignmark",
             "mprescripts", "none",
-            -> false
+                -> false
 
             "mi", "mn", "mo", "mtext", "ms" -> directText(element).isNotBlank()
             "mglyph" -> element.attr("alt").isNotBlank() || element.attr("title").isNotBlank()

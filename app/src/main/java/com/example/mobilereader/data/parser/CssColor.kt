@@ -160,7 +160,8 @@ internal object CssColor {
         val alphaText = if (slash >= 0) arguments.substring(slash + 1) else null
         val channels = channelText.cssTokens()
         if (channels.size != channelCount) return null
-        val alpha = alphaText?.cssTokens()?.singleOrNull() ?: if (alphaText != null) return null else null
+        val alpha =
+            alphaText?.cssTokens()?.singleOrNull() ?: if (alphaText != null) return null else null
         return FunctionalComponents(
             channels = channels,
             alpha = alpha,
@@ -230,9 +231,9 @@ internal object CssColor {
 
     private fun argb(alpha: Int, red: Int, green: Int, blue: Int): Int =
         ((alpha and 0xff) shl 24) or
-            ((red and 0xff) shl 16) or
-            ((green and 0xff) shl 8) or
-            (blue and 0xff)
+                ((red and 0xff) shl 16) or
+                ((green and 0xff) shl 8) or
+                (blue and 0xff)
 
     private data class FunctionalComponents(
         val channels: List<String>,

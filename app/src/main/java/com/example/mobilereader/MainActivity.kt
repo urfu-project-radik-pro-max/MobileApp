@@ -37,18 +37,24 @@ class MainActivity : ComponentActivity() {
     private var selectedBookId by mutableStateOf<String?>(null)
     private var loadingBook by mutableStateOf(false)
     private var openingProblem by mutableStateOf<String?>(null)
-    private val openBookPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { selectedUri ->
-        if (selectedUri != null) importSelectedBook(selectedUri)
-    }
+    private val openBookPicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { selectedUri ->
+            if (selectedUri != null) importSelectedBook(selectedUri)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         selectedBookId = savedInstanceState?.getString("selectedBookId")
-            ?: readerApplication.bookRepository.books.value.maxByOrNull { it.lastOpenedAtMillis ?: it.addedAtMillis }?.id
+            ?: readerApplication.bookRepository.books.value.maxByOrNull {
+                it.lastOpenedAtMillis ?: it.addedAtMillis
+            }?.id
         setContent {
             val appSettings by readerApplication.settingsRepository.appSettings
                 .collectAsStateWithLifecycle(initialValue = AppSettings())
-            MobileReaderTheme(appSettings.effectiveTheme(isSystemInDarkTheme()), appSettings.dynamicColor) {
+            MobileReaderTheme(
+                appSettings.effectiveTheme(isSystemInDarkTheme()),
+                appSettings.dynamicColor
+            ) {
                 val currentBookId = selectedBookId
                 if (currentBookId != null) {
                     ReaderScreen(bookId = currentBookId, onBack = { selectedBookId = null })
@@ -57,7 +63,13 @@ class MainActivity : ComponentActivity() {
                         loadingBook = loadingBook,
                         openingProblem = openingProblem,
                         onOpenBook = {
-                            openBookPicker.launch(arrayOf("application/epub+zip", "application/octet-stream", "application/zip"))
+                            openBookPicker.launch(
+                                arrayOf(
+                                    "application/epub+zip",
+                                    "application/octet-stream",
+                                    "application/zip"
+                                )
+                            )
                         },
                     )
                 }
@@ -95,7 +107,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             runCatching { readerApplication.bookRepository.importEpub(selectedUri) }
                 .onSuccess { importedBook -> selectedBookId = importedBook.id }
-                .onFailure { problem -> openingProblem = problem.message ?: "Cannot read this EPUB" }
+                .onFailure { problem ->
+                    openingProblem = problem.message ?: "Cannot read this EPUB"
+                }
             loadingBook = false
         }
     }
@@ -108,7 +122,9 @@ private fun BookPickerScreen(
     onOpenBook: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text("MobileReader", style = MaterialTheme.typography.headlineMedium)

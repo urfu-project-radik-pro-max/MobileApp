@@ -13,8 +13,8 @@ object WoffDecoder {
 
     fun isWoff(bytes: ByteArray): Boolean =
         bytes.size >= 4 &&
-            bytes[0] == 'w'.code.toByte() && bytes[1] == 'O'.code.toByte() &&
-            bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte()
+                bytes[0] == 'w'.code.toByte() && bytes[1] == 'O'.code.toByte() &&
+                bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte()
 
 
     fun decode(
@@ -116,9 +116,9 @@ object WoffDecoder {
 
     private fun readU32(bytes: ByteArray, at: Int): Int =
         ((bytes[at].toInt() and 0xFF) shl 24) or
-            ((bytes[at + 1].toInt() and 0xFF) shl 16) or
-            ((bytes[at + 2].toInt() and 0xFF) shl 8) or
-            (bytes[at + 3].toInt() and 0xFF)
+                ((bytes[at + 1].toInt() and 0xFF) shl 16) or
+                ((bytes[at + 2].toInt() and 0xFF) shl 8) or
+                (bytes[at + 3].toInt() and 0xFF)
 
     private fun writeU16(bytes: ByteArray, at: Int, value: Int) {
         bytes[at] = (value ushr 8).toByte()

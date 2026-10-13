@@ -21,7 +21,7 @@ class PublisherStyle(
 ) {
     val isEmpty: Boolean
         get() = justify == null && lineHeight == null && hyphenation == null &&
-            !dropCaps && fontName == null && embeddedFonts.isEmpty()
+                !dropCaps && fontName == null && embeddedFonts.isEmpty()
 }
 
 

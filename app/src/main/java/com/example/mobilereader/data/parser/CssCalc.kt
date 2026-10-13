@@ -13,7 +13,7 @@ internal object CssCalc {
 
     fun isMath(value: String): Boolean =
         value.startsWith("calc(") || value.startsWith("min(") ||
-            value.startsWith("max(") || value.startsWith("clamp(")
+                value.startsWith("max(") || value.startsWith("clamp(")
 
 
     fun eval(expr: String, ctx: Ctx, acceptScalar: Boolean = false): Float? {

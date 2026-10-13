@@ -52,8 +52,8 @@ data class UserBookData(
 
     val isEmpty: Boolean
         get() = startedAtMillis == null && finishedAtMillis == null &&
-            status == ReadingStatus.NONE &&
-            readerSettings == null
+                status == ReadingStatus.NONE &&
+                readerSettings == null
 }
 
 

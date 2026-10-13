@@ -16,9 +16,9 @@ internal fun looksLikeFont(bytes: ByteArray): Boolean {
     val b2 = bytes[2].toInt() and 0xFF
     val b3 = bytes[3].toInt() and 0xFF
     return (b0 == 0x00 && b1 == 0x01 && b2 == 0x00 && b3 == 0x00) ||
-        (b0 == 'O'.code && b1 == 'T'.code && b2 == 'T'.code && b3 == 'O'.code) ||
-        (b0 == 't'.code && b1 == 'r'.code && b2 == 'u'.code && b3 == 'e'.code) ||
-        (b0 == 't'.code && b1 == 't'.code && b2 == 'c'.code && b3 == 'f'.code)
+            (b0 == 'O'.code && b1 == 'T'.code && b2 == 'T'.code && b3 == 'O'.code) ||
+            (b0 == 't'.code && b1 == 'r'.code && b2 == 'u'.code && b3 == 'e'.code) ||
+            (b0 == 't'.code && b1 == 't'.code && b2 == 'c'.code && b3 == 'f'.code)
 }
 
 

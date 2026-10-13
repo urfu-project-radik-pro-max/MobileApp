@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.map
 
 @kotlinx.serialization.Serializable
 enum class ReaderFont { LITERATA, SERIF, SANS, CUSTOM }
+
 @kotlinx.serialization.Serializable
 enum class ReadingMode { SCROLL, PAGES }
 

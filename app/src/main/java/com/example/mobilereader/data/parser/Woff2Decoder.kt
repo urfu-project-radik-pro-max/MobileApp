@@ -26,8 +26,8 @@ object Woff2Decoder {
 
     fun isWoff2(bytes: ByteArray): Boolean =
         bytes.size >= 4 &&
-            bytes[0] == 'w'.code.toByte() && bytes[1] == 'O'.code.toByte() &&
-            bytes[2] == 'F'.code.toByte() && bytes[3] == '2'.code.toByte()
+                bytes[0] == 'w'.code.toByte() && bytes[1] == 'O'.code.toByte() &&
+                bytes[2] == 'F'.code.toByte() && bytes[3] == '2'.code.toByte()
 
 
     fun decode(
@@ -135,7 +135,7 @@ object Woff2Decoder {
             val hhea = entries.firstOrNull { it.tag == "hhea" && !it.transformed } ?: return null
             if (hhea.data.size < 36) return null
             val numHMetrics = ((hhea.data[34].toInt() and 0xFF) shl 8) or
-                (hhea.data[35].toInt() and 0xFF)
+                    (hhea.data[35].toInt() and 0xFF)
             hmtx.data = reconstructHmtx(hmtx.data, numGlyphs, numHMetrics, mins) ?: return null
         }
 
@@ -169,6 +169,7 @@ object Woff2Decoder {
             off += size
             return sub
         }
+
         val nContourStream = substream(sizes[0])
         val nPointsStream = substream(sizes[1])
         val flagStream = substream(sizes[2])
@@ -252,7 +253,16 @@ object Woff2Decoder {
                         intArrayOf(xs.min(), ys.min(), xs.max(), ys.max())
                     }
                     xMins[glyph] = bbox[0]
-                    writeSimpleGlyph(out, nContours, pointsPerContour, xs, ys, onCurve, bbox, instructions)
+                    writeSimpleGlyph(
+                        out,
+                        nContours,
+                        pointsPerContour,
+                        xs,
+                        ys,
+                        onCurve,
+                        bbox,
+                        instructions
+                    )
                 }
             }
             if (out.size() % 2 != 0) out.write(0)
@@ -290,7 +300,7 @@ object Woff2Decoder {
                 val base = flag - 20
                 val b1 = data.u8()
                 withSign(flag, 1 + (base and 0x30) + (b1 shr 4)) to
-                    withSign(flag shr 1, 1 + ((base and 0x0C) shl 2) + (b1 and 0x0F))
+                        withSign(flag shr 1, 1 + ((base and 0x0C) shl 2) + (b1 and 0x0F))
             }
 
             flag < 120 -> {
@@ -298,7 +308,7 @@ object Woff2Decoder {
                 val b1 = data.u8()
                 val b2 = data.u8()
                 withSign(flag, 1 + (base / 12 shl 8) + b1) to
-                    withSign(flag shr 1, 1 + (base % 12 shr 2 shl 8) + b2)
+                        withSign(flag shr 1, 1 + (base % 12 shr 2 shl 8) + b2)
             }
 
             flag < 124 -> {
@@ -306,7 +316,7 @@ object Woff2Decoder {
                 val b2 = data.u8()
                 val b3 = data.u8()
                 withSign(flag, (b1 shl 4) + (b2 shr 4)) to
-                    withSign(flag shr 1, ((b2 and 0x0F) shl 8) + b3)
+                        withSign(flag shr 1, ((b2 and 0x0F) shl 8) + b3)
             }
 
             else -> {
@@ -389,7 +399,8 @@ object Woff2Decoder {
         val proportionalOmitted = flags and 0x1 != 0
         val monospaceOmitted = flags and 0x2 != 0
         val advances = IntArray(numHMetrics) { reader.u16() }
-        val lsbs = IntArray(numHMetrics) { i -> if (proportionalOmitted) xMins[i] else reader.i16() }
+        val lsbs =
+            IntArray(numHMetrics) { i -> if (proportionalOmitted) xMins[i] else reader.i16() }
         val extra = IntArray(numGlyphs - numHMetrics) { i ->
             if (monospaceOmitted) xMins[numHMetrics + i] else reader.i16()
         }
@@ -552,9 +563,9 @@ object Woff2Decoder {
 
     private fun ByteArray.u32be(at: Int): Long =
         ((this[at].toInt() and 0xFF).toLong() shl 24) or
-            ((this[at + 1].toInt() and 0xFF).toLong() shl 16) or
-            ((this[at + 2].toInt() and 0xFF).toLong() shl 8) or
-            (this[at + 3].toInt() and 0xFF).toLong()
+                ((this[at + 1].toInt() and 0xFF).toLong() shl 16) or
+                ((this[at + 2].toInt() and 0xFF).toLong() shl 8) or
+                (this[at + 3].toInt() and 0xFF).toLong()
 
     private fun writeU16(bytes: ByteArray, at: Int, value: Int) {
         bytes[at] = (value ushr 8).toByte()

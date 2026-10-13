@@ -199,7 +199,7 @@ class HtmlMapper(
         if (node.attr("id").isEmpty() || node.normalName() !in NOTE_ITEM_TAGS) return false
         return node.parents().take(3).any { ancestor ->
             val tokens = "${ancestor.attr("epub:type")} ${ancestor.attr("role")} " +
-                "${ancestor.attr("type")} ${ancestor.className()}"
+                    "${ancestor.attr("type")} ${ancestor.className()}"
             tokens.lowercase().split(Regex("[^a-z0-9_-]+")).any(::isNoteCollectionToken)
         }
     }
@@ -213,7 +213,7 @@ class HtmlMapper(
 
 
         val opensFlowBox = node.normalName() !in IMAGE_TAGS &&
-            isPublisherBoxElement(node, allowRoot = false)
+                isPublisherBoxElement(node, allowRoot = false)
 
 
         if (opensFlowBox) flushPending(quote)
@@ -291,7 +291,10 @@ class HtmlMapper(
                 val styleType = when (kind) {
                     "pl" -> "none"
                     else -> ListMarkers.cssTypeFor(node.attr("enum").takeIf(String::isNotEmpty))
-                        ?: ListMarkers.applicableCssType(css?.computed(node)?.listStyleType, ordered)
+                        ?: ListMarkers.applicableCssType(
+                            css?.computed(node)?.listStyleType,
+                            ordered
+                        )
                         ?: ListMarkers.defaultType(ordered, listStack.size + 1)
                 }
                 val start = if (ordered) node.attr("start").toIntOrNull() ?: 1 else 1
@@ -334,7 +337,7 @@ class HtmlMapper(
             "dtbook", "book", "frontmatter", "bodymatter", "rearmatter",
             "level", "level1", "level2", "level3", "level4", "level5", "level6",
             "sidebar", "note", "prodnote", "annotation", "linegroup", "imggroup",
-            -> {
+                -> {
                 flushPending(quote)
                 if (isEmptyLineBlock(node)) {
                     out += ContentElement.Spacer(1f)
@@ -495,9 +498,9 @@ class HtmlMapper(
             return false
         }
         return (allowRoot && tag in ROOT_TAGS) ||
-            tag in PUBLISHER_BOX_TAGS ||
-            (isMathElement(element) && isDisplayMath(element)) ||
-            element.selectFirst(BLOCK_PROBE) != null
+                tag in PUBLISHER_BOX_TAGS ||
+                (isMathElement(element) && isDisplayMath(element)) ||
+                element.selectFirst(BLOCK_PROBE) != null
     }
 
 
@@ -825,7 +828,7 @@ class HtmlMapper(
                 val cellPublisherBox = css?.publisherBoxStyle(cellElement)
                     ?: PublisherBoxStyle.DEFAULT.takeIf {
                         cellComputed?.paddingSpecified == true ||
-                            cellComputed?.borderSpecified == true
+                                cellComputed?.borderSpecified == true
                     }
                 TableCell(
                     text = builder.build(),
@@ -958,9 +961,10 @@ class HtmlMapper(
             lineHeightMult = when {
                 own.lineHeightMult == null && base.lineHeightMult != null -> 1.3f
                 own.lineHeightMult != null && (
-                    base.lineHeightMult == null ||
-                        kotlin.math.abs(own.lineHeightMult - base.lineHeightMult) > 0.001f
-                    ) -> own.lineHeightMult
+                        base.lineHeightMult == null ||
+                                kotlin.math.abs(own.lineHeightMult - base.lineHeightMult) > 0.001f
+                        ) -> own.lineHeightMult
+
                 else -> null
             },
             language = language.takeIf { it != tableLanguage },
@@ -1102,9 +1106,9 @@ class HtmlMapper(
     private fun isBlockLikeMedia(node: Element): Boolean {
         val computed = css?.computed(node) ?: return false
         return computed.floatSide != null ||
-            (computed.widthFrac ?: 0f) > 0.45f ||
-            (computed.widthEm ?: 0f) > 12f ||
-            (computed.heightEm ?: 0f) > 3f
+                (computed.widthFrac ?: 0f) > 0.45f ||
+                (computed.widthEm ?: 0f) > 12f ||
+                (computed.heightEm ?: 0f) > 3f
     }
 
     private class ExplicitFloatedInitial(
@@ -1125,6 +1129,7 @@ class HtmlMapper(
                 is Element -> {
                     if (resolver.computed(node).hidden) null else node
                 }
+
                 else -> null
             }
         } ?: return null
@@ -1192,7 +1197,12 @@ class HtmlMapper(
             val file = File(path)
             val bytes = runCatching { file.readBytes() }.getOrNull() ?: continue
             if (bytes.isEmpty()) continue
-            image.attr(attr, "data:${imageMime(file.name, bytes)};base64,${Base64.getEncoder().encodeToString(bytes)}")
+            image.attr(
+                attr,
+                "data:${imageMime(file.name, bytes)};base64,${
+                    Base64.getEncoder().encodeToString(bytes)
+                }"
+            )
         }
         return resolveInlineSvg(svg.outerHtml())
     }
@@ -1202,9 +1212,11 @@ class HtmlMapper(
         return when {
             lower.endsWith(".svg") || bytes.take(256).toByteArray()
                 .decodeToString().contains("<svg", ignoreCase = true) -> "image/svg+xml"
+
             lower.endsWith(".gif") || bytes.size >= 3 &&
-                bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
-                bytes[2] == 'F'.code.toByte() -> "image/gif"
+                    bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+                    bytes[2] == 'F'.code.toByte() -> "image/gif"
+
             lower.endsWith(".webp") -> "image/webp"
             lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
             else -> "image/png"
@@ -1380,7 +1392,7 @@ class HtmlMapper(
 
     private fun isEmptyLineBlock(element: Element): Boolean =
         element.classNames().any { it.equals("empty-line", ignoreCase = true) } &&
-            element.text().isBlank()
+                element.text().isBlank()
 
 
     private fun appendChildrenInline(
@@ -1444,126 +1456,130 @@ class HtmlMapper(
                         return
                     }
                     when (node.normalName()) {
-                    "br" -> out.lineBreak()
-                    "wbr" -> out.wordBreakOpportunity()
-                    "img", "image" -> {
-                        if (!isBlockLikeMedia(node)) {
-                            val src = if (node.normalName() == "img") {
-                                node.attr("src")
-                            } else {
-                                node.attr("xlink:href").ifEmpty { node.attr("href") }
-                            }
-                            val path = resolveImage(src)
-                            if (path != null) {
-                                out.inlineImage(path, imageAlt(node))
-                            } else {
-                                imageAlt(node)?.let(out::text)
-                            }
-                        }
-                    }
-
-                    "svg" -> {
-                        val computed = css?.computed(node)
-                        val blockLike = (computed?.widthFrac ?: 0f) > 0.45f ||
-                            (computed?.widthEm ?: 0f) > 12f ||
-                            (computed?.heightEm ?: 0f) > 3f
-                        if (!blockLike) {
-                            resolveSvg(node)?.let { path ->
-                                val alt = node.attr("aria-label").ifBlank {
-                                    node.selectFirst("title")?.text().orEmpty()
+                        "br" -> out.lineBreak()
+                        "wbr" -> out.wordBreakOpportunity()
+                        "img", "image" -> {
+                            if (!isBlockLikeMedia(node)) {
+                                val src = if (node.normalName() == "img") {
+                                    node.attr("src")
+                                } else {
+                                    node.attr("xlink:href").ifEmpty { node.attr("href") }
                                 }
-                                out.inlineImage(path, alt)
+                                val path = resolveImage(src)
+                                if (path != null) {
+                                    out.inlineImage(path, imageAlt(node))
+                                } else {
+                                    imageAlt(node)?.let(out::text)
+                                }
                             }
                         }
-                    }
+
+                        "svg" -> {
+                            val computed = css?.computed(node)
+                            val blockLike = (computed?.widthFrac ?: 0f) > 0.45f ||
+                                    (computed?.widthEm ?: 0f) > 12f ||
+                                    (computed?.heightEm ?: 0f) > 3f
+                            if (!blockLike) {
+                                resolveSvg(node)?.let { path ->
+                                    val alt = node.attr("aria-label").ifBlank {
+                                        node.selectFirst("title")?.text().orEmpty()
+                                    }
+                                    out.inlineImage(path, alt)
+                                }
+                            }
+                        }
 
 
-                    "ruby" -> appendChildrenInline(
-                        node, out, preserveWhitespace, depth, suppressedStyleElement,
-                    )
-                    "rp" -> Unit
-                    "rt" -> {
-                        out.pushStyle(
-                            SpanStyle(
-                                fontSize = TextUnit(0.6f, TextUnitType.Em),
-                                baselineShift = BaselineShift(0.35f),
-                            ),
-                        )
-                        appendChildrenInline(
+                        "ruby" -> appendChildrenInline(
                             node, out, preserveWhitespace, depth, suppressedStyleElement,
                         )
-                        out.pop()
-                    }
-                    "q" -> {
-                        val generatedBefore = generated(node, after = false)
-                        val generatedAfter = generated(node, after = true)
-                        val (open, close) = quoteMarksFor(node)
-                        if (generatedBefore != null) {
-                            appendGeneratedRun(out, generatedBefore)
-                        } else {
-                            out.text(open)
-                        }
-                        appendChildrenInline(
-                            node, out, preserveWhitespace, depth, suppressedStyleElement,
-                        )
-                        if (generatedAfter != null) {
-                            appendGeneratedRun(out, generatedAfter)
-                        } else {
-                            out.text(close)
-                        }
-                    }
-                    "mark" -> {
-                        out.pushStyle(SpanStyle(background = Color(0x66FFD54F)))
-                        val style = inlineStyleFor(node)
-                        if (style != null) out.pushStyle(style)
-                        appendChildrenInline(
-                            node, out, preserveWhitespace, depth, suppressedStyleElement,
-                        )
-                        if (style != null) out.pop()
-                        out.pop()
-                    }
-                    "a" -> {
-                        val href = node.attr("href").trim()
-                        val key = href.takeIf { it.isNotEmpty() }?.let(resolveLink)
-                        if (key != null) {
-                            linkTargets += key
-                            val note = isNoteReference(node, key)
-                            if (note) noteTargets += key
-                            out.pushAnnotation(
-                                if (note) FOOTNOTE_TAG else LINK_TAG,
-                                key,
+
+                        "rp" -> Unit
+                        "rt" -> {
+                            out.pushStyle(
+                                SpanStyle(
+                                    fontSize = TextUnit(0.6f, TextUnitType.Em),
+                                    baselineShift = BaselineShift(0.35f),
+                                ),
                             )
                             appendChildrenInline(
                                 node, out, preserveWhitespace, depth, suppressedStyleElement,
                             )
                             out.pop()
-                        } else if (safeExternalHref(href)) {
-                            out.pushAnnotation(EXTERNAL_LINK_TAG, href)
-                            appendChildrenInline(
-                                node, out, preserveWhitespace, depth, suppressedStyleElement,
-                            )
-                            out.pop()
-                        } else {
-                            appendChildrenInline(
-                                node, out, preserveWhitespace, depth, suppressedStyleElement,
-                            )
                         }
-                    }
 
-                    else -> {
-                        val style = if (node === suppressedStyleElement) {
-                            null
-                        } else {
-                            inlineStyleFor(node)
+                        "q" -> {
+                            val generatedBefore = generated(node, after = false)
+                            val generatedAfter = generated(node, after = true)
+                            val (open, close) = quoteMarksFor(node)
+                            if (generatedBefore != null) {
+                                appendGeneratedRun(out, generatedBefore)
+                            } else {
+                                out.text(open)
+                            }
+                            appendChildrenInline(
+                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                            )
+                            if (generatedAfter != null) {
+                                appendGeneratedRun(out, generatedAfter)
+                            } else {
+                                out.text(close)
+                            }
                         }
-                        if (style != null) out.pushStyle(style)
-                        appendGeneratedRun(out, generated(node, after = false))
-                        appendChildrenInline(
-                            node, out, preserveWhitespace, depth, suppressedStyleElement,
-                        )
-                        appendGeneratedRun(out, generated(node, after = true))
-                        if (style != null) out.pop()
-                    }
+
+                        "mark" -> {
+                            out.pushStyle(SpanStyle(background = Color(0x66FFD54F)))
+                            val style = inlineStyleFor(node)
+                            if (style != null) out.pushStyle(style)
+                            appendChildrenInline(
+                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                            )
+                            if (style != null) out.pop()
+                            out.pop()
+                        }
+
+                        "a" -> {
+                            val href = node.attr("href").trim()
+                            val key = href.takeIf { it.isNotEmpty() }?.let(resolveLink)
+                            if (key != null) {
+                                linkTargets += key
+                                val note = isNoteReference(node, key)
+                                if (note) noteTargets += key
+                                out.pushAnnotation(
+                                    if (note) FOOTNOTE_TAG else LINK_TAG,
+                                    key,
+                                )
+                                appendChildrenInline(
+                                    node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                )
+                                out.pop()
+                            } else if (safeExternalHref(href)) {
+                                out.pushAnnotation(EXTERNAL_LINK_TAG, href)
+                                appendChildrenInline(
+                                    node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                )
+                                out.pop()
+                            } else {
+                                appendChildrenInline(
+                                    node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                )
+                            }
+                        }
+
+                        else -> {
+                            val style = if (node === suppressedStyleElement) {
+                                null
+                            } else {
+                                inlineStyleFor(node)
+                            }
+                            if (style != null) out.pushStyle(style)
+                            appendGeneratedRun(out, generated(node, after = false))
+                            appendChildrenInline(
+                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                            )
+                            appendGeneratedRun(out, generated(node, after = true))
+                            if (style != null) out.pop()
+                        }
                     }
                 } finally {
                     if (bidiMode != null) out.pop()
@@ -1713,7 +1729,7 @@ class HtmlMapper(
             return (premul + outA / 2) / outA
         }
         return (outA shl 24) or (channel(16) shl 16) or
-            (channel(8) shl 8) or channel(0)
+                (channel(8) shl 8) or channel(0)
     }
 
     private fun mergeSpanStyles(first: SpanStyle?, second: SpanStyle?): SpanStyle? = when {
@@ -1766,6 +1782,7 @@ class HtmlMapper(
             element.normalName() == "bdi" -> computed?.direction
                 ?.takeIf { it != parentDirection }
                 ?: "auto"
+
             else -> computed?.direction ?: when (attributeDirection(element)) {
                 BookTextDirection.LTR -> "ltr"
                 BookTextDirection.RTL -> "rtl"
@@ -1778,20 +1795,24 @@ class HtmlMapper(
             "bdo" -> computed?.unicodeBidi ?: "bidi-override"
             else -> computed?.unicodeBidi ?: if (rawDir.isNotEmpty()) "isolate" else "normal"
         }
+
         fun isolate() = when (direction) {
             "ltr" -> InlineBidiMode.ISOLATE_LTR
             "rtl" -> InlineBidiMode.ISOLATE_RTL
             else -> InlineBidiMode.ISOLATE_AUTO
         }
+
         fun embed() = when (direction) {
             "rtl" -> InlineBidiMode.EMBED_RTL
             "ltr" -> InlineBidiMode.EMBED_LTR
             else -> InlineBidiMode.ISOLATE_AUTO
         }
+
         fun override() = when (direction) {
             "rtl" -> InlineBidiMode.OVERRIDE_RTL
             else -> InlineBidiMode.OVERRIDE_LTR
         }
+
         fun isolateOverride() = when (direction) {
             "rtl" -> InlineBidiMode.ISOLATE_OVERRIDE_RTL
             else -> InlineBidiMode.ISOLATE_OVERRIDE_LTR
@@ -1840,15 +1861,15 @@ class HtmlMapper(
         if (link.attr("type").equals("note", ignoreCase = true)) return true
 
         val hint = (link.className() + " " + link.id() + " " +
-            link.attr("rel") + " " + key.substringBefore('#').substringAfterLast('/'))
+                link.attr("rel") + " " + key.substringBefore('#').substringAfterLast('/'))
             .lowercase()
         if (NOTE_HINT.containsMatchIn(hint)) return true
 
 
         val marker = link.text().trim().trim('[', ']', '(', ')')
         return (link.normalName() == "sup" || link.parents().any { it.normalName() == "sup" } ||
-            link.selectFirst("sup") != null) &&
-            marker.isNotEmpty() && marker.all { it.isDigit() || it in "*†‡" }
+                link.selectFirst("sup") != null) &&
+                marker.isNotEmpty() && marker.all { it.isDigit() || it in "*†‡" }
     }
 
     private fun safeExternalHref(href: String): Boolean {
@@ -1868,7 +1889,7 @@ class HtmlMapper(
                     if (parts.size == 2) parts[0] to parts[1] else "" to ""
                 }
             property.equals("display", ignoreCase = true) &&
-                value.substringBefore('!').trim().equals("block", ignoreCase = true)
+                    value.substringBefore('!').trim().equals("block", ignoreCase = true)
         }
     }
 

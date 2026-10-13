@@ -129,7 +129,7 @@ object EpubParser {
                 if (id.isEmpty()) return null
                 return refinements.firstOrNull {
                     it.attr("refines").removePrefix("#") == id &&
-                        it.attr("property").substringAfterLast(':') == property
+                            it.attr("property").substringAfterLast(':') == property
                 }?.text()?.trim()?.takeIf { it.isNotEmpty() }
             }
 
@@ -137,7 +137,8 @@ object EpubParser {
             val translators = mutableListOf<String>()
             for (creator in packageDocument.select("metadata > dc|creator")) {
                 val name = creator.text().trim().takeIf { it.isNotEmpty() } ?: continue
-                val role = creator.attr("opf:role").ifEmpty { refined(creator.id(), "role").orEmpty() }
+                val role =
+                    creator.attr("opf:role").ifEmpty { refined(creator.id(), "role").orEmpty() }
                 when {
                     role.isEmpty() || role.equals("aut", ignoreCase = true) -> authors += name
                     role.equals("trl", ignoreCase = true) -> translators += name
@@ -158,6 +159,7 @@ object EpubParser {
                     identifier.attr("opf:scheme").equals("ISBN", ignoreCase = true) -> text
                     text.startsWith("urn:isbn:", ignoreCase = true) ->
                         text.substringAfterLast(':').trim()
+
                     looksLikeIsbn(text) -> text
                     else -> null
                 } ?: continue
@@ -170,8 +172,9 @@ object EpubParser {
                 ?.attr("content")?.trim()?.takeIf { it.isNotEmpty() }
                 ?.let { name ->
                     series = name
-                    seriesNumber = packageDocument.selectFirst("metadata > meta[name=calibre:series_index]")
-                        ?.attr("content")?.trim()?.toFloatOrNull()
+                    seriesNumber =
+                        packageDocument.selectFirst("metadata > meta[name=calibre:series_index]")
+                            ?.attr("content")?.trim()?.toFloatOrNull()
                 }
             if (series == null) {
                 for (meta in packageDocument.select("metadata > meta[property=belongs-to-collection]")) {
@@ -240,7 +243,8 @@ object EpubParser {
             val packageDocument = parseXml(epubArchive, packagePath, budget, limits)
 
             val items = manifestItems(packageDocument)
-            val toc = chapterTitles(epubArchive, packageDocument, items, packageDirectory, budget, limits)
+            val toc =
+                chapterTitles(epubArchive, packageDocument, items, packageDirectory, budget, limits)
             val titlesByPath = toc.byPath
             val packageRendition = EpubRenditionParser.parsePackage(packageDocument)
             val publisherDocuments = mutableMapOf<String, PublisherDocumentInfo>()
@@ -497,7 +501,8 @@ object EpubParser {
                     val end = boundaries.getOrNull(position + 1)?.first ?: elements.size
                     if (start >= end) continue
                     val tocEntry = boundary.second
-                    val merge = tocEntry == null && titlesByPath.isNotEmpty() && chapters.isNotEmpty()
+                    val merge =
+                        tocEntry == null && titlesByPath.isNotEmpty() && chapters.isNotEmpty()
                     val chapterIndex: Int
                     val elementBase: Int
                     if (merge) {
@@ -767,7 +772,8 @@ object EpubParser {
             limits = limits,
         )
         val publisherSpine = spine.mapNotNull { occurrence ->
-            val path = resolvePublisherPath(packageDirectory, occurrence.item.href) ?: return@mapNotNull null
+            val path = resolvePublisherPath(packageDirectory, occurrence.item.href)
+                ?: return@mapNotNull null
             val resource = resources[path] ?: return@mapNotNull null
             if (!isPublisherDocument(resource.mediaType)) return@mapNotNull null
 
@@ -836,10 +842,12 @@ object EpubParser {
                     if (!isPublisherFont(mediaType)) continue
                     PublisherResourceTransform.IDPF_FONT_OBFUSCATION
                 }
+
                 FontObfuscation.ADOBE_ALGORITHM -> {
                     if (!isPublisherFont(mediaType)) continue
                     PublisherResourceTransform.ADOBE_FONT_OBFUSCATION
                 }
+
                 else -> continue
             }
             val properties = item.propertyTokens()
@@ -945,8 +953,8 @@ object EpubParser {
 
     private fun isPublisherDocument(mediaType: String): Boolean =
         mediaType == "application/xhtml+xml" ||
-            mediaType == "text/html" ||
-            mediaType == "image/svg+xml"
+                mediaType == "text/html" ||
+                mediaType == "image/svg+xml"
 
     private fun isPublisherResource(mediaType: String): Boolean = when {
         isPublisherDocument(mediaType) -> true
@@ -1243,7 +1251,8 @@ object EpubParser {
         for (face in resolver.fontFaces) {
             val entryPath = resolvePath(face.baseDir, face.src)
             val family = face.family.trim().lowercase()
-            val key = "${entryPath.length}:$entryPath${family.length}:$family:${face.bold}:${face.italic}"
+            val key =
+                "${entryPath.length}:$entryPath${family.length}:$family:${face.bold}:${face.italic}"
             if (key in out) continue
             val target = File(imagesDir, fontFileName(entryPath))
 
@@ -1277,7 +1286,13 @@ object EpubParser {
                 FontObfuscation.ADOBE_ALGORITHM -> {
 
                     bytes = keys.adobe.asSequence()
-                        .map { FontObfuscation.deobfuscate(bytes, it, FontObfuscation.ADOBE_PREFIX) }
+                        .map {
+                            FontObfuscation.deobfuscate(
+                                bytes,
+                                it,
+                                FontObfuscation.ADOBE_PREFIX
+                            )
+                        }
                         .firstOrNull {
                             looksLikeFont(it) || WoffDecoder.isWoff(it) || Woff2Decoder.isWoff2(it)
                         }
@@ -1334,7 +1349,7 @@ object EpubParser {
         return epubArchive.entries().asSequence()
             .firstOrNull {
                 !it.isDirectory && isSafeArchivePath(it.name) &&
-                    it.name.endsWith(".opf", ignoreCase = true)
+                        it.name.endsWith(".opf", ignoreCase = true)
             }
             ?.name
     }
@@ -1345,7 +1360,8 @@ object EpubParser {
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
     ): Document {
-        val entry = zipEntry(epubArchive, path) ?: throw IllegalArgumentException("Missing $path in EPUB")
+        val entry =
+            zipEntry(epubArchive, path) ?: throw IllegalArgumentException("Missing $path in EPUB")
         val bytes = budget.readRequired(entry, limits.maxPackageXmlBytes, "EPUB package $path")
         return Jsoup.parse(bytes.inputStream(), "UTF-8", "", Parser.xmlParser())
     }
@@ -1468,7 +1484,7 @@ object EpubParser {
                                     .firstOrNull { it.tagName() == "span" }
                                     ?.text()?.trim()?.takeIf { it.isNotEmpty() }
                             }
-                    }
+                        }
                     unlinkedLabel?.let { text = composeNestedChapterTitle(it, text) }
                     addEntry(target, text, depth, fragment)
                 }

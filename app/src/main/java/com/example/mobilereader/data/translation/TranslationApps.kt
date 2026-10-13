@@ -24,9 +24,12 @@ fun queryTranslatorApps(context: Context): List<TranslatorApp> {
         TranslatorApp(
             id = ComponentName(activity.packageName, activity.name).flattenToString(),
             label = label,
-            actionLabel = runCatching { resolved.loadLabel(manager).toString() }.getOrDefault(label),
+            actionLabel = runCatching {
+                resolved.loadLabel(manager).toString()
+            }.getOrDefault(label),
         )
-    }.distinctBy { it.id }.sortedWith(compareBy({ it.label.lowercase() }, { it.actionLabel.lowercase() }, { it.id }))
+    }.distinctBy { it.id }
+        .sortedWith(compareBy({ it.label.lowercase() }, { it.actionLabel.lowercase() }, { it.id }))
 }
 
 fun translationIntent(target: TranslatorApp, text: String): Intent =
