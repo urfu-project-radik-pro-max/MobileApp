@@ -82,7 +82,7 @@ class ContextualTranslationGateway(
             try {
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 10_000
-                connection.readTimeout = 30_000
+                connection.readTimeout = 90_000
                 connection.doOutput = true
                 connection.instanceFollowRedirects = false
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
