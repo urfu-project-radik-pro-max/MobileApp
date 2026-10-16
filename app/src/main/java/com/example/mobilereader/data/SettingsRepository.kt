@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -95,6 +96,12 @@ data class AppSettings(
     val viewMode: LibraryViewMode = LibraryViewMode.GRID,
 )
 
+data class TranslationSettings(
+    val contextPageCount: Int = 2,
+    val instruction: String = "",
+    val serverAddress: String = "",
+)
+
 
 fun AppSettings.effectiveTheme(systemDark: Boolean): AppTheme {
     if (!followSystemTheme) return theme
@@ -141,6 +148,9 @@ class SettingsRepository(private val context: Context) {
         val autoInvertImages = booleanPreferencesKey("auto_invert_images")
         val libraryViewMode = stringPreferencesKey("library_view_mode")
         val deviceId = stringPreferencesKey("device_id")
+        val translationContextPageCount = intPreferencesKey("translation_context_page_count")
+        val translationInstruction = stringPreferencesKey("translation_instruction")
+        val translationServerAddress = stringPreferencesKey("translation_server_address")
     }
 
 
@@ -160,6 +170,29 @@ class SettingsRepository(private val context: Context) {
 
     val appSettings: Flow<AppSettings> =
         context.settingsDataStore.data.map { it.readAppSettings() }
+
+    val translationSettings: Flow<TranslationSettings> =
+        context.settingsDataStore.data.map { preferences ->
+            TranslationSettings(
+                contextPageCount = (preferences[Keys.translationContextPageCount] ?: 2).coerceIn(1, 5),
+                instruction = preferences[Keys.translationInstruction].orEmpty(),
+                serverAddress = preferences[Keys.translationServerAddress].orEmpty(),
+            )
+        }
+
+    suspend fun updateTranslationSettings(transform: (TranslationSettings) -> TranslationSettings) {
+        context.settingsDataStore.edit { preferences ->
+            val current = TranslationSettings(
+                contextPageCount = (preferences[Keys.translationContextPageCount] ?: 2).coerceIn(1, 5),
+                instruction = preferences[Keys.translationInstruction].orEmpty(),
+                serverAddress = preferences[Keys.translationServerAddress].orEmpty(),
+            )
+            val updated = transform(current)
+            preferences[Keys.translationContextPageCount] = updated.contextPageCount.coerceIn(1, 5)
+            preferences[Keys.translationInstruction] = updated.instruction.take(2000)
+            preferences[Keys.translationServerAddress] = updated.serverAddress.trim()
+        }
+    }
 
     val libraryViewMode: Flow<LibraryViewMode> =
         context.settingsDataStore.data.map { prefs ->

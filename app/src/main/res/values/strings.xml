@@ -106,4 +106,36 @@
     <string name="duration_m">%1$d min</string>
     <string name="duration_less_min">less than a minute</string>
     <string name="settings_close">Close</string>
+    <string name="contextual_translation_title">Contextual translation</string>
+    <string name="contextual_translation_settings">Translation settings</string>
+    <string name="contextual_translation_page_count_description">Pages of context: the selected page and preceding pages. In scroll mode, a similar amount of text is used.</string>
+    <string name="contextual_translation_fewer_pages">Use fewer pages</string>
+    <string name="contextual_translation_more_pages">Use more pages</string>
+    <string name="contextual_translation_instruction">Your instruction</string>
+    <string name="contextual_translation_instruction_description">Sent with each request. Leave empty to use the server default.</string>
+    <string name="contextual_translation_server_address">Server address</string>
+    <string name="contextual_translation_server_description">Leave empty for demonstration mode. Local HTTP is available only in debug builds.</string>
+    <string name="contextual_translation_save">Save</string>
+    <string name="contextual_translation_loading">Preparing translation…</string>
+    <string name="contextual_translation_demonstration">Demonstration mode</string>
+    <string name="contextual_translation_demo_translation">Translation will appear when a server is connected.</string>
+    <string name="contextual_translation_demo_explanation">The selected phrase and its surrounding context are ready to send.</string>
+    <string name="contextual_translation_result_label">Translation</string>
+    <string name="contextual_translation_explanation_label">Explanation</string>
+    <string name="contextual_translation_nuance_label">Nuance</string>
+    <string name="contextual_translation_retry">Retry</string>
+    <string name="contextual_translation_empty_book">There is no text to analyze in this book.</string>
+    <string name="contextual_translation_invalid_selection">The selected passage is no longer available.</string>
+    <string name="contextual_translation_empty_selection">Select text to translate.</string>
+    <string name="contextual_translation_selection_too_long">The selected passage is too long.</string>
+    <string name="contextual_translation_paragraph_too_long">The surrounding paragraph is too long to send.</string>
+    <string name="contextual_translation_invalid_server_address">Enter a valid HTTP or HTTPS server address.</string>
+    <string name="contextual_translation_https_required">This build requires an HTTPS server address.</string>
+    <string name="contextual_translation_server_response">The server returned status %1$d.</string>
+    <string name="contextual_translation_invalid_response">The server returned an invalid translation.</string>
+    <string name="contextual_translation_network_error">Could not connect to the server.</string>
+    <plurals name="contextual_translation_page_count">
+        <item quantity="one">%1$d page</item>
+        <item quantity="other">%1$d pages</item>
+    </plurals>
 </resources>

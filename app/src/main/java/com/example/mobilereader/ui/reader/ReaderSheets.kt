@@ -67,6 +67,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
@@ -518,6 +519,7 @@ fun ReaderSettingsControls(
     onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
     onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
     onBrightnessChange: (Float?) -> Unit,
+    onTranslationSettings: () -> Unit,
 
     onPeekHeight: ((Int) -> Unit)? = null,
 
@@ -579,6 +581,12 @@ fun ReaderSettingsControls(
     }
 
     Column {
+        Spacer(Modifier.height(8.dp))
+
+        TextButton(onClick = onTranslationSettings) {
+            Text(stringResource(R.string.contextual_translation_settings))
+        }
+
         Spacer(Modifier.height(8.dp))
 
 
