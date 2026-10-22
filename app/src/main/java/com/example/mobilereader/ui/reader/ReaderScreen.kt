@@ -116,9 +116,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -160,7 +157,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.Velocity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -3440,35 +3436,6 @@ private fun ReaderBottomBar(
     )
 
 
-    val panelNestedScroll = remember(halfPx, fullPx) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                val dy = available.y
-                if (dy > 0f && panelHeight.value > 0f) {
-                    val target = (panelHeight.value - dy).coerceAtLeast(0f)
-                    val used = panelHeight.value - target
-                    panelMotion.snapTo(target)
-                    return Offset(0f, used)
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                val anchors = listOf(0f, halfPx, fullPx)
-                if (anchors.none { abs(it - panelHeight.value) < 1f }) {
-                    settleWithVelocity(available.y)
-                    return available
-                }
-                return Velocity.Zero
-            }
-        }
-    }
-
-
     fun togglePanel(content: BarPanel) {
         haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
         when {
@@ -3565,11 +3532,7 @@ private fun ReaderBottomBar(
 
                     val panelDp = with(density) { panelHeight.value.toDp() }
                     if (panelDp > 0.dp) {
-                        Box(
-                            Modifier
-                                .height(panelDp)
-                                .nestedScroll(panelNestedScroll),
-                        ) {
+                        Box(Modifier.height(panelDp)) {
                             when (panelContent) {
                                 BarPanel.SETTINGS -> ReaderSettingsControls(
                                     selectedCategoryIndex = selectedSettingsCategoryIndex,
