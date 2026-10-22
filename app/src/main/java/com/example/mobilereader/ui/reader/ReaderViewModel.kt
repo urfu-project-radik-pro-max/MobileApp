@@ -10,6 +10,12 @@ import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.data.BookRepository
 import com.example.mobilereader.data.ReaderSettings
 import com.example.mobilereader.data.SettingsRepository
+import com.example.mobilereader.data.TranslationSettings
+import com.example.mobilereader.data.translation.ContextualTranslationGateway
+import com.example.mobilereader.data.translation.ContextualTranslationException
+import com.example.mobilereader.data.translation.ContextualTranslationProblem
+import com.example.mobilereader.data.translation.ContextualTranslationRequest
+import com.example.mobilereader.data.translation.ContextualTranslationResult
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.BookContent
 import com.example.mobilereader.data.model.Bookmark
@@ -24,6 +30,7 @@ import com.example.mobilereader.data.model.ReadingProgress
 import com.example.mobilereader.data.model.withFootnoteRefStyle
 import com.example.mobilereader.data.model.withoutFootnotes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -115,11 +122,26 @@ sealed interface ReaderState {
     }
 }
 
+sealed interface ContextualTranslationState {
+    data object Idle : ContextualTranslationState
+    data class Loading(val selectedText: String) : ContextualTranslationState
+    data class Success(
+        val selectedText: String,
+        val result: ContextualTranslationResult,
+    ) : ContextualTranslationState
+    data class Failure(
+        val selectedText: String,
+        val problem: ContextualTranslationProblem,
+        val statusCode: Int? = null,
+    ) : ContextualTranslationState
+}
+
 class ReaderViewModel(
     private val repository: BookRepository,
     private val settingsRepository: SettingsRepository,
     private val bookId: String,
     private val paginationCacheDir: File,
+    private val translationGateway: ContextualTranslationGateway,
 ) : ViewModel() {
 
 
@@ -137,6 +159,15 @@ class ReaderViewModel(
 
     val appSettings: StateFlow<AppSettings> = settingsRepository.appSettings
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+
+    val translationSettings: StateFlow<TranslationSettings> = settingsRepository.translationSettings
+        .stateIn(viewModelScope, SharingStarted.Eagerly, TranslationSettings())
+
+    private val mutableTranslationState = MutableStateFlow<ContextualTranslationState>(
+        ContextualTranslationState.Idle,
+    )
+    val translationState: StateFlow<ContextualTranslationState> = mutableTranslationState.asStateFlow()
+    private var translationJob: Job? = null
 
     private val _state = MutableStateFlow<ReaderState>(ReaderState.Loading)
     val state = _state.asStateFlow()
@@ -540,6 +571,69 @@ class ReaderViewModel(
         viewModelScope.launch { settingsRepository.updateApp(transform) }
     }
 
+    fun updateTranslationSettings(transform: (TranslationSettings) -> TranslationSettings) {
+        viewModelScope.launch { settingsRepository.updateTranslationSettings(transform) }
+    }
+
+    fun requestContextualTranslation(selection: BookSelection) {
+        translationJob?.cancel()
+        val ready = state.value as? ReaderState.Ready ?: return
+        val currentSettings = translationSettings.value
+        val pages = pagination.value?.takeIf { holder ->
+            settings.value.readingMode == com.example.mobilereader.data.ReadingMode.PAGES &&
+                !holder.partial
+        }?.pages
+        val context = try {
+            ContextualTranslationContextBuilder.build(
+                items = ready.items,
+                selection = selection,
+                contextPageCount = currentSettings.contextPageCount,
+                pages = pages,
+            )
+        } catch (error: ContextualTranslationException) {
+            mutableTranslationState.value = ContextualTranslationState.Failure(
+                selectedText = "",
+                problem = error.problem,
+            )
+            return
+        }
+        mutableTranslationState.value = ContextualTranslationState.Loading(context.selectedText)
+        translationJob = viewModelScope.launch {
+            mutableTranslationState.value = try {
+                val result = translationGateway.translate(
+                    request = ContextualTranslationRequest(
+                        selectedText = context.selectedText,
+                        surroundingParagraph = context.surroundingParagraph,
+                        context = context.context,
+                        sourceLanguage = ready.language,
+                        targetLanguage = "ru",
+                        instruction = currentSettings.instruction,
+                    ),
+                    serverAddress = currentSettings.serverAddress,
+                )
+                ContextualTranslationState.Success(context.selectedText, result)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: ContextualTranslationException) {
+                ContextualTranslationState.Failure(
+                    selectedText = context.selectedText,
+                    problem = error.problem,
+                    statusCode = error.statusCode,
+                )
+            } catch (error: Exception) {
+                ContextualTranslationState.Failure(
+                    selectedText = context.selectedText,
+                    problem = ContextualTranslationProblem.NETWORK,
+                )
+            }
+        }
+    }
+
+    fun clearContextualTranslation() {
+        translationJob?.cancel()
+        mutableTranslationState.value = ContextualTranslationState.Idle
+    }
+
     suspend fun setDefaultTranslator(component: String) {
         settingsRepository.updateApp { it.copy(defaultTranslator = component) }
     }
@@ -708,6 +802,10 @@ class ReaderViewModel(
                     settingsRepository = app.settingsRepository,
                     bookId = bookId,
                     paginationCacheDir = File(app.filesDir, "pagination"),
+                    translationGateway = ContextualTranslationGateway(
+                        allowUnencryptedConnection = app.applicationInfo.flags and
+                            android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
+                    ),
                 )
             }
         }

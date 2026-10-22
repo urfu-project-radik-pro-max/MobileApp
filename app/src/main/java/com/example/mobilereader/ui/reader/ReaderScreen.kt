@@ -1,6 +1,5 @@
 package com.example.mobilereader.ui.reader
 
-import com.example.mobilereader.ui.translation.rememberTranslationAction
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -360,6 +359,10 @@ private fun ReaderContent(
         readerColors(theme = appSettings.theme, chromeScheme = chromeScheme)
     }
     val liveBook by viewModel.book.collectAsStateWithLifecycle()
+    val translationSettings by viewModel.translationSettings.collectAsStateWithLifecycle()
+    val translationState by viewModel.translationState.collectAsStateWithLifecycle()
+    var translationSettingsVisible by remember { mutableStateOf(false) }
+    var translationSelection by remember { mutableStateOf<BookSelection?>(null) }
 
 
     val panelFraction = remember { mutableFloatStateOf(0f) }
@@ -535,10 +538,6 @@ private fun ReaderContent(
     ) ?: ReaderNavigationSession.DEFAULT_TIMEOUT_MILLIS
     LaunchedEffect(returnTimeout) { viewModel.setReturnTimeoutMillis(returnTimeout) }
     val navigationBackAvailable = navigationReturnLocation != null
-    val translateSelection = rememberTranslationAction(
-        defaultTranslator = appSettings.defaultTranslator,
-        saveDefault = viewModel::setDefaultTranslator,
-    )
     val pagination by viewModel.pagination.collectAsStateWithLifecycle()
     val returnPageNumber = if (settings.readingMode == ReadingMode.PAGES) {
         val origin = navigationReturnLocation as? ReaderReturnLocation.Main
@@ -830,8 +829,10 @@ private fun ReaderContent(
             },
             onTranslate = {
                 val selected = selectedText()
-                if (selected.isNotEmpty()) {
-                    translateSelection(selected)
+                val selectedRange = selection.selection
+                if (selected.isNotEmpty() && selectedRange != null) {
+                    translationSelection = selectedRange
+                    viewModel.requestContextualTranslation(selectedRange)
                 }
                 selection.clear()
             },
@@ -1068,6 +1069,7 @@ private fun ReaderContent(
             onUpdate = { transform -> viewModel.updateSettings(transform) },
             onUpdateApp = { transform -> viewModel.updateAppSettings(transform) },
             onBrightnessChange = setBrightness,
+            onTranslationSettings = { translationSettingsVisible = true },
             onChapterClick = { target ->
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                 when (target) {
@@ -1194,6 +1196,25 @@ private fun ReaderContent(
                 }
             },
             onDismiss = { noteToShow = null },
+        )
+    }
+
+    if (translationSettingsVisible) {
+        ContextualTranslationSettingsSheet(
+            settings = translationSettings,
+            onSave = { updated -> viewModel.updateTranslationSettings { updated } },
+            onDismiss = { translationSettingsVisible = false },
+        )
+    }
+
+    translationSelection?.let { selectedRange ->
+        ContextualTranslationResultSheet(
+            state = translationState,
+            onRetry = { viewModel.requestContextualTranslation(selectedRange) },
+            onDismiss = {
+                translationSelection = null
+                viewModel.clearContextualTranslation()
+            },
         )
     }
 }
@@ -3338,6 +3359,7 @@ private fun ReaderBottomBar(
     onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
     onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
     onBrightnessChange: (Float?) -> Unit,
+    onTranslationSettings: () -> Unit,
     onChapterClick: (ReaderNavigationTarget) -> Unit,
     onBookmarkClick: (Int) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -3554,6 +3576,7 @@ private fun ReaderBottomBar(
                                         onUpdate = onUpdate,
                                         onUpdateApp = onUpdateApp,
                                         onBrightnessChange = onBrightnessChange,
+                                        onTranslationSettings = onTranslationSettings,
                                         onPeekHeight = { measured ->
                                             val target = measured +
                                                 with(density) { 10.dp.toPx() }

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_translate">Перевести</string>
+    <string name="contextual_translation_title">Контекстный перевод</string>
+    <string name="contextual_translation_settings">Настройки перевода</string>
+    <string name="contextual_translation_page_count_description">Страницы контекста: текущая и предыдущие. В режиме прокрутки используется сопоставимый объём текста.</string>
+    <string name="contextual_translation_fewer_pages">Уменьшить число страниц</string>
+    <string name="contextual_translation_more_pages">Увеличить число страниц</string>
+    <string name="contextual_translation_instruction">Ваш промпт</string>
+    <string name="contextual_translation_instruction_description">Передаётся с каждым запросом. Оставьте пустым для настройки сервера по умолчанию.</string>
+    <string name="contextual_translation_server_address">Адрес сервера</string>
+    <string name="contextual_translation_server_description">Оставьте пустым для демонстрационного режима. Локальный HTTP доступен только в отладочной сборке.</string>
+    <string name="contextual_translation_save">Сохранить</string>
+    <string name="contextual_translation_loading">Готовим перевод…</string>
+    <string name="contextual_translation_demonstration">Демонстрационный режим</string>
+    <string name="contextual_translation_demo_translation">Перевод появится после подключения сервера.</string>
+    <string name="contextual_translation_demo_explanation">Выделенный фрагмент и окружающий текст подготовлены к отправке.</string>
+    <string name="contextual_translation_result_label">Перевод</string>
+    <string name="contextual_translation_explanation_label">Объяснение</string>
+    <string name="contextual_translation_nuance_label">Оттенок смысла</string>
+    <string name="contextual_translation_retry">Повторить</string>
+    <string name="contextual_translation_empty_book">В книге нет текста для разбора.</string>
+    <string name="contextual_translation_invalid_selection">Выделенный фрагмент больше недоступен.</string>
+    <string name="contextual_translation_empty_selection">Выделите текст для перевода.</string>
+    <string name="contextual_translation_selection_too_long">Выделенный фрагмент слишком длинный.</string>
+    <string name="contextual_translation_paragraph_too_long">Окружающий абзац слишком длинный для отправки.</string>
+    <string name="contextual_translation_invalid_server_address">Укажите правильный HTTP- или HTTPS-адрес сервера.</string>
+    <string name="contextual_translation_https_required">Для этой сборки требуется HTTPS-адрес сервера.</string>
+    <string name="contextual_translation_server_response">Сервер вернул код %1$d.</string>
+    <string name="contextual_translation_invalid_response">Сервер вернул неверный формат перевода.</string>
+    <string name="contextual_translation_network_error">Не удалось подключиться к серверу.</string>
+    <plurals name="contextual_translation_page_count">
+        <item quantity="one">%1$d страница</item>
+        <item quantity="few">%1$d страницы</item>
+        <item quantity="many">%1$d страниц</item>
+        <item quantity="other">%1$d страницы</item>
+    </plurals>
+</resources>

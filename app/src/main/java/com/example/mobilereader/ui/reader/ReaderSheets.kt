@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Article
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoFixHigh
@@ -52,6 +53,7 @@ import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Superscript
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.TextFields
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.ViewColumn
 import androidx.compose.material.icons.rounded.WbSunny
@@ -518,6 +520,7 @@ fun ReaderSettingsControls(
     onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
     onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
     onBrightnessChange: (Float?) -> Unit,
+    onTranslationSettings: () -> Unit,
 
     onPeekHeight: ((Int) -> Unit)? = null,
 
@@ -580,7 +583,6 @@ fun ReaderSettingsControls(
 
     Column {
         Spacer(Modifier.height(8.dp))
-
 
         val themes = AppTheme.entries
         ChipRow(
@@ -1028,6 +1030,13 @@ fun ReaderSettingsControls(
                 colors = colors,
                 checked = appSettings.autoInvertImages,
                 onCheckedChange = { onUpdateApp { s -> s.copy(autoInvertImages = it) } },
+            )
+            PanelDivider(colors)
+            SettingNavigationRow(
+                icon = Icons.Rounded.Translate,
+                title = stringResource(R.string.contextual_translation_settings),
+                colors = colors,
+                onClick = onTranslationSettings,
             )
         }
 
@@ -1645,6 +1654,45 @@ private fun SettingToggleRow(
                 )
                 onCheckedChange(value)
             },
+        )
+    }
+}
+
+
+@Composable
+private fun SettingNavigationRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    colors: ReaderColors,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = colors.onChrome,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = colors.onChrome,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(12.dp))
+        Icon(
+            Icons.AutoMirrored.Rounded.ArrowForward,
+            contentDescription = null,
+            tint = colors.secondaryText,
+            modifier = Modifier.size(20.dp),
         )
     }
 }

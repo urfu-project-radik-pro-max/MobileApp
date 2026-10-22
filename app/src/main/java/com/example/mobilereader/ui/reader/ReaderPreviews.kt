@@ -63,6 +63,7 @@ private fun ReaderControlsPreview() {
                 onUpdate = {},
                 onUpdateApp = {},
                 onBrightnessChange = {},
+                onTranslationSettings = {},
             )
         }
     }
