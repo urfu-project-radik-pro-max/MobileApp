@@ -43,7 +43,6 @@
     <string name="reader_note_title">Note</string>
     <string name="reader_hide_footnotes">Hide footnotes</string>
     <string name="reader_hide_footnotes_subtitle">Remove [1]-style markers from the text</string>
-    <string name="reader_section_book_design">Book design</string>
     <string name="reader_set_by_book">Set by the book</string>
     <string name="reader_font_from_book">Publisher\'s formatting</string>
     <string name="reader_fonts_in_book">Fonts inside this book</string>
@@ -81,10 +80,6 @@
     <string name="reader_margins_narrow">Narrow</string>
     <string name="reader_margins_normal">Normal</string>
     <string name="reader_margins_wide">Wide</string>
-    <string name="reader_anim_slide">Slide</string>
-    <string name="reader_anim_cascade">Cascade</string>
-    <string name="reader_anim_curl">Page curl</string>
-    <string name="reader_haptics">Haptic feedback</string>
     <string name="reader_volume_keys">Turn pages with volume keys</string>
     <string name="theme_light">Light</string>
     <string name="theme_light_note">Warm white, forest green accents</string>

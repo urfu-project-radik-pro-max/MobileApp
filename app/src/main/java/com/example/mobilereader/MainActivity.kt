@@ -6,7 +6,6 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -25,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.mobilereader.data.AppSettings
-import com.example.mobilereader.data.effectiveTheme
 import com.example.mobilereader.ui.reader.ReaderScreen
 import com.example.mobilereader.ui.theme.MobileReaderTheme
 import kotlinx.coroutines.launch
@@ -52,7 +50,7 @@ class MainActivity : ComponentActivity() {
             val appSettings by readerApplication.settingsRepository.appSettings
                 .collectAsStateWithLifecycle(initialValue = AppSettings())
             MobileReaderTheme(
-                appSettings.effectiveTheme(isSystemInDarkTheme()),
+                appSettings.theme,
                 appSettings.dynamicColor
             ) {
                 val currentBookId = selectedBookId

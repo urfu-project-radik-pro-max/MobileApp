@@ -27,12 +27,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoFixHigh
-import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.BrightnessAuto
@@ -45,7 +44,6 @@ import androidx.compose.material.icons.rounded.DensitySmall
 import androidx.compose.material.icons.rounded.FormatAlignJustify
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.HistoryEdu
-import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.InvertColors
 import androidx.compose.material.icons.rounded.Remove
@@ -54,8 +52,6 @@ import androidx.compose.material.icons.rounded.Superscript
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.Translate
-import androidx.compose.material.icons.rounded.Vibration
-import androidx.compose.material.icons.rounded.ViewColumn
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ColorScheme
@@ -110,7 +106,6 @@ import com.example.mobilereader.R
 import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.data.PageMargins
-import com.example.mobilereader.data.PageTurnAnimation
 import com.example.mobilereader.data.ReaderFont
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.EmbeddedFont
@@ -188,8 +183,6 @@ fun ReaderPanelsContent(
         }
     }
 }
-
-
 @Composable
 private fun ContentsTab(
     ready: ReaderState.Ready,
@@ -817,36 +810,6 @@ fun ReaderSettingsControls(
         }
 
 
-        if (settings.readingMode == ReadingMode.PAGES) {
-            Column {
-                Spacer(Modifier.height(18.dp))
-                PanelSectionLabel(stringResource(R.string.reader_section_page_anim), colors)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AnimationCard(
-                        label = stringResource(R.string.reader_anim_slide),
-                        icon = Icons.AutoMirrored.Rounded.Article,
-                        selected = settings.pageTurnAnimation == PageTurnAnimation.SLIDE,
-                        colors = colors,
-                        modifier = Modifier.weight(1f),
-                    ) { onUpdate { it.copy(pageTurnAnimation = PageTurnAnimation.SLIDE) } }
-                    AnimationCard(
-                        label = stringResource(R.string.reader_anim_cascade),
-                        icon = Icons.Rounded.ViewColumn,
-                        selected = settings.pageTurnAnimation == PageTurnAnimation.CASCADE,
-                        colors = colors,
-                        modifier = Modifier.weight(1f),
-                    ) { onUpdate { it.copy(pageTurnAnimation = PageTurnAnimation.CASCADE) } }
-                    AnimationCard(
-                        label = stringResource(R.string.reader_anim_curl),
-                        icon = Icons.Rounded.AutoStories,
-                        selected = settings.pageTurnAnimation == PageTurnAnimation.PAGE_CURL,
-                        colors = colors,
-                        modifier = Modifier.weight(1f),
-                    ) { onUpdate { it.copy(pageTurnAnimation = PageTurnAnimation.PAGE_CURL) } }
-                }
-            }
-        }
-
         Spacer(Modifier.height(18.dp))
 
 
@@ -960,11 +923,10 @@ fun ReaderSettingsControls(
 
         Spacer(Modifier.height(22.dp))
 
-
         PanelSectionLabel(
-            stringResource(R.string.reader_section_book_design),
+            stringResource(R.string.reader_section_text_layout),
             colors,
-            icon = Icons.Rounded.AutoFixHigh,
+            icon = Icons.Rounded.TextFields,
         )
         SettingsGroup(colors) {
             SettingToggleRow(
@@ -975,17 +937,7 @@ fun ReaderSettingsControls(
                 checked = settings.bookStyles,
                 onCheckedChange = { onUpdate { s -> s.copy(bookStyles = it) } },
             )
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-
-        PanelSectionLabel(
-            stringResource(R.string.reader_section_text_layout),
-            colors,
-            icon = Icons.Rounded.TextFields,
-        )
-        SettingsGroup(colors) {
+            PanelDivider(colors)
             SettingToggleRow(
                 icon = Icons.Rounded.FormatAlignJustify,
                 title = stringResource(R.string.reader_justify),
@@ -1046,25 +998,35 @@ fun ReaderSettingsControls(
         PanelSectionLabel(
             stringResource(R.string.reader_section_pages_nav),
             colors,
-            icon = Icons.Rounded.MenuBook,
+            icon = Icons.AutoMirrored.Rounded.MenuBook,
         )
         SettingsGroup(colors) {
-            SettingToggleRow(
-                icon = Icons.Rounded.MenuBook,
-                title = stringResource(R.string.reader_chapter_new_page),
-                colors = colors,
-                checked = settings.startChaptersOnNewPage,
-                onCheckedChange = { onUpdate { s -> s.copy(startChaptersOnNewPage = it) } },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.Rounded.Tag,
-                title = stringResource(R.string.reader_show_chapter_pages),
-                colors = colors,
-                checked = settings.showChapterPagesLeft,
-                onCheckedChange = { onUpdate { s -> s.copy(showChapterPagesLeft = it) } },
-            )
-            PanelDivider(colors)
+            if (settings.readingMode == ReadingMode.PAGES) {
+                SettingToggleRow(
+                    icon = Icons.AutoMirrored.Rounded.MenuBook,
+                    title = stringResource(R.string.reader_section_page_anim),
+                    colors = colors,
+                    checked = settings.pageTurnAnimationEnabled,
+                    onCheckedChange = { onUpdate { s -> s.copy(pageTurnAnimationEnabled = it) } },
+                )
+                PanelDivider(colors)
+                SettingToggleRow(
+                    icon = Icons.AutoMirrored.Rounded.MenuBook,
+                    title = stringResource(R.string.reader_chapter_new_page),
+                    colors = colors,
+                    checked = settings.startChaptersOnNewPage,
+                    onCheckedChange = { onUpdate { s -> s.copy(startChaptersOnNewPage = it) } },
+                )
+                PanelDivider(colors)
+                SettingToggleRow(
+                    icon = Icons.Rounded.Tag,
+                    title = stringResource(R.string.reader_show_chapter_pages),
+                    colors = colors,
+                    checked = settings.showChapterPagesLeft,
+                    onCheckedChange = { onUpdate { s -> s.copy(showChapterPagesLeft = it) } },
+                )
+                PanelDivider(colors)
+            }
             SettingToggleRow(
                 icon = Icons.Rounded.Superscript,
                 title = stringResource(R.string.reader_hide_footnotes),
@@ -1090,14 +1052,6 @@ fun ReaderSettingsControls(
                 colors = colors,
                 checked = appSettings.keepScreenOn,
                 onCheckedChange = { onUpdateApp { s -> s.copy(keepScreenOn = it) } },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.Rounded.Vibration,
-                title = stringResource(R.string.reader_haptics),
-                colors = colors,
-                checked = appSettings.haptics,
-                onCheckedChange = { onUpdateApp { s -> s.copy(haptics = it) } },
             )
             PanelDivider(colors)
             SettingToggleRow(
@@ -1693,57 +1647,6 @@ private fun SettingNavigationRow(
             contentDescription = null,
             tint = colors.secondaryText,
             modifier = Modifier.size(20.dp),
-        )
-    }
-}
-
-
-@Composable
-private fun AnimationCard(
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    selected: Boolean,
-    colors: ReaderColors,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val haptics = LocalHapticFeedback.current
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .border(
-                width = if (selected) 1.5.dp else 1.dp,
-                color = if (selected) colors.accent else colors.onChrome.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(20.dp),
-            )
-            .clickable {
-                haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                onClick()
-            }
-            .padding(vertical = 14.dp),
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(
-                    if (selected) colors.accent else colors.onChrome.copy(alpha = 0.10f),
-                ),
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (selected) colors.background else colors.onChrome,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = colors.onChrome,
-            maxLines = 1,
         )
     }
 }

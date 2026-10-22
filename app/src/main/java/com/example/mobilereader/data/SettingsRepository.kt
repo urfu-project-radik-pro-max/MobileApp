@@ -24,15 +24,7 @@ enum class PageMargins { NARROW, NORMAL, WIDE }
 
 
 @kotlinx.serialization.Serializable
-enum class PageTurnAnimation { SLIDE, CASCADE, PAGE_CURL }
-
-
-@kotlinx.serialization.Serializable
 enum class AppTheme { WHITE, SEPIA, OLED }
-
-
-@kotlinx.serialization.Serializable
-enum class LightThemeDefault { LIGHT, BEIGE }
 
 
 @kotlinx.serialization.Serializable
@@ -70,7 +62,7 @@ data class ReaderSettings(
 
     val dropCaps: Boolean = false,
 
-    val pageTurnAnimation: PageTurnAnimation = PageTurnAnimation.SLIDE,
+    val pageTurnAnimationEnabled: Boolean = true,
 
     @kotlinx.serialization.Transient
     val centerHeadings: Boolean = false,
@@ -80,11 +72,8 @@ data class ReaderSettings(
 @kotlinx.serialization.Serializable
 data class AppSettings(
     val theme: AppTheme = AppTheme.WHITE,
-    val followSystemTheme: Boolean = true,
-    val lightThemeDefault: LightThemeDefault = LightThemeDefault.LIGHT,
     val dynamicColor: Boolean = false,
     val startupDestination: StartupDestination = StartupDestination.LIBRARY,
-    val haptics: Boolean = true,
     val keepScreenOn: Boolean = true,
     val volumeKeyPaging: Boolean = true,
     val centerHeadings: Boolean = false,
@@ -102,15 +91,6 @@ data class TranslationSettings(
     val serverAddress: String = "",
 )
 
-
-fun AppSettings.effectiveTheme(systemDark: Boolean): AppTheme {
-    if (!followSystemTheme) return theme
-    if (systemDark) return AppTheme.OLED
-    return when (lightThemeDefault) {
-        LightThemeDefault.LIGHT -> AppTheme.WHITE
-        LightThemeDefault.BEIGE -> AppTheme.SEPIA
-    }
-}
 
 private val Context.settingsDataStore by preferencesDataStore(name = "reader_settings")
 
@@ -131,15 +111,12 @@ class SettingsRepository(private val context: Context) {
         val hideFootnotes = booleanPreferencesKey("hide_footnotes")
         val invertImages = booleanPreferencesKey("invert_images")
         val dropCaps = booleanPreferencesKey("drop_caps")
-        val pageTurnAnimation = stringPreferencesKey("page_turn_animation")
+        val pageTurnAnimationEnabled = booleanPreferencesKey("page_turn_animation_enabled")
 
 
         val appTheme = stringPreferencesKey("app_theme_v2")
-        val followSystemTheme = booleanPreferencesKey("follow_system_theme")
-        val lightThemeDefault = stringPreferencesKey("light_theme_default")
         val dynamicColor = booleanPreferencesKey("dynamic_color")
         val startupDestination = stringPreferencesKey("startup_destination")
-        val haptics = booleanPreferencesKey("haptics")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
         val volumeKeyPaging = booleanPreferencesKey("volume_key_paging")
         val centerHeadings = booleanPreferencesKey("center_headings")
@@ -222,7 +199,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.hideFootnotes] = updated.hideFootnotes
             prefs[Keys.invertImages] = updated.invertImages
             prefs[Keys.dropCaps] = updated.dropCaps
-            prefs[Keys.pageTurnAnimation] = updated.pageTurnAnimation.name
+            prefs[Keys.pageTurnAnimationEnabled] = updated.pageTurnAnimationEnabled
         }
     }
 
@@ -230,11 +207,8 @@ class SettingsRepository(private val context: Context) {
         context.settingsDataStore.edit { prefs ->
             val updated = transform(prefs.readAppSettings())
             prefs[Keys.appTheme] = updated.theme.name
-            prefs[Keys.followSystemTheme] = updated.followSystemTheme
-            prefs[Keys.lightThemeDefault] = updated.lightThemeDefault.name
             prefs[Keys.dynamicColor] = updated.dynamicColor
             prefs[Keys.startupDestination] = updated.startupDestination.name
-            prefs[Keys.haptics] = updated.haptics
             prefs[Keys.keepScreenOn] = updated.keepScreenOn
             prefs[Keys.volumeKeyPaging] = updated.volumeKeyPaging
             prefs[Keys.centerHeadings] = updated.centerHeadings
@@ -263,10 +237,8 @@ class SettingsRepository(private val context: Context) {
             hideFootnotes = this[Keys.hideFootnotes] ?: defaults.hideFootnotes,
             invertImages = this[Keys.invertImages] ?: defaults.invertImages,
             dropCaps = this[Keys.dropCaps] ?: defaults.dropCaps,
-            pageTurnAnimation = enumOrDefault(
-                this[Keys.pageTurnAnimation],
-                defaults.pageTurnAnimation,
-            ),
+            pageTurnAnimationEnabled = this[Keys.pageTurnAnimationEnabled]
+                ?: defaults.pageTurnAnimationEnabled,
         )
     }
 
@@ -274,17 +246,11 @@ class SettingsRepository(private val context: Context) {
         val defaults = AppSettings()
         return AppSettings(
             theme = enumOrDefault(this[Keys.appTheme], defaults.theme),
-            followSystemTheme = this[Keys.followSystemTheme] ?: defaults.followSystemTheme,
-            lightThemeDefault = enumOrDefault(
-                this[Keys.lightThemeDefault],
-                defaults.lightThemeDefault,
-            ),
             dynamicColor = this[Keys.dynamicColor] ?: defaults.dynamicColor,
             startupDestination = enumOrDefault(
                 this[Keys.startupDestination],
                 defaults.startupDestination,
             ),
-            haptics = this[Keys.haptics] ?: defaults.haptics,
             keepScreenOn = this[Keys.keepScreenOn] ?: defaults.keepScreenOn,
             volumeKeyPaging = this[Keys.volumeKeyPaging] ?: defaults.volumeKeyPaging,
             centerHeadings = this[Keys.centerHeadings] ?: defaults.centerHeadings,

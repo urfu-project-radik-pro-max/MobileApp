@@ -13,6 +13,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -57,6 +58,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -198,7 +200,6 @@ import com.example.mobilereader.ui.reader.selection.range
 import com.example.mobilereader.ui.reader.selection.readerHighlights
 import com.example.mobilereader.ui.reader.selection.rememberReaderHighlights
 import com.example.mobilereader.ui.reader.selection.rememberTextFragment
-import com.example.mobilereader.data.effectiveTheme
 import com.example.mobilereader.ui.theme.isDark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -225,8 +226,7 @@ fun ReaderScreen(
 
 
     var chromeVisible by rememberSaveable { mutableStateOf(false) }
-    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val readerTheme = appSettings.effectiveTheme(systemDark)
+    val readerTheme = appSettings.theme
     SystemBarsEffect(readerTheme, chromeVisible)
 
     when (val current = state) {
@@ -2091,6 +2091,14 @@ private fun PagedReader(
                 realPageCount + extraPages
             }
 
+            suspend fun turnPage(targetPage: Int) {
+                if (settings.pageTurnAnimationEnabled) {
+                    pagerState.animateScrollToPage(targetPage)
+                } else {
+                    pagerState.scrollToPage(targetPage)
+                }
+            }
+
 
             val chapterLastPage = remember(current) {
                 val chapterOf = IntArray(realPageCount) { ready.chapterAt(pages[it].firstItemIndex) }
@@ -2210,10 +2218,10 @@ private fun PagedReader(
                 pagerState.scrollToPage(page)
                 onSeekPositionConsumed()
             }
-            LaunchedEffect(pagerState) {
+            LaunchedEffect(pagerState, settings.pageTurnAnimationEnabled) {
                 turnEvents.collect { forward ->
                     val delta = if (forward) 1 else -1
-                    pagerState.animateScrollToPage(
+                    turnPage(
                         (pagerState.currentPage + delta)
                             .coerceIn(0, realPageCount + extraPages - 1),
                     )
@@ -2221,7 +2229,7 @@ private fun PagedReader(
             }
 
 
-            DisposableEffect(selection, pagerState, realPageCount) {
+            DisposableEffect(selection, pagerState, realPageCount, settings.pageTurnAnimationEnabled) {
                 val mine = SelectionAutoAdvance(
                     paged = true,
                     step = { direction, _ ->
@@ -2229,12 +2237,12 @@ private fun PagedReader(
                             direction,
                             ready.pageProgression,
                         )
-                        pagerState.animateScrollToPage(
+                        turnPage(
                             (pagerState.currentPage + logicalDirection)
                                 .coerceIn(0, (realPageCount - 1).coerceAtLeast(0)),
                         )
                     },
-                    settle = { pagerState.animateScrollToPage(pagerState.currentPage) },
+                    settle = { turnPage(pagerState.currentPage) },
                 )
                 selection.advance = mine
                 selection.surfaceMoving = { pagerState.isScrollInProgress }
@@ -2249,6 +2257,12 @@ private fun PagedReader(
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 1,
+                // TODO: Add distinct page-turn effects when their rendering is implemented.
+                flingBehavior = if (settings.pageTurnAnimationEnabled) {
+                    PagerDefaults.flingBehavior(state = pagerState)
+                } else {
+                    PagerDefaults.flingBehavior(state = pagerState, snapAnimationSpec = snap())
+                },
                 reverseLayout = ReaderProgression.usesReversePagerLayout(
                     ready.pageProgression,
                     uiLayoutIsRtl = uiLayoutIsRtl,
@@ -2262,7 +2276,7 @@ private fun PagedReader(
                                     leftEdge = true,
                                     progression = ready.pageProgression,
                                 )
-                                pagerState.animateScrollToPage(
+                                turnPage(
                                     (pagerState.currentPage + delta)
                                         .coerceIn(0, realPageCount + extraPages - 1),
                                 )
@@ -2274,7 +2288,7 @@ private fun PagedReader(
                                     leftEdge = false,
                                     progression = ready.pageProgression,
                                 )
-                                pagerState.animateScrollToPage(
+                                turnPage(
                                     (pagerState.currentPage + delta)
                                         .coerceIn(0, realPageCount + extraPages - 1),
                                 )
