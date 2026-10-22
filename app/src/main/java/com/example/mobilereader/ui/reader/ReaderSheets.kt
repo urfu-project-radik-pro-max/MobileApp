@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +29,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Add
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.rounded.DensityLarge
 import androidx.compose.material.icons.rounded.DensitySmall
 import androidx.compose.material.icons.rounded.FormatAlignJustify
 import androidx.compose.material.icons.rounded.Lightbulb
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.InvertColors
@@ -55,11 +57,14 @@ import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -68,6 +73,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -85,16 +91,16 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
@@ -113,6 +119,7 @@ import com.example.mobilereader.data.model.PublisherStyle
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.theme.customFontFamily
 import com.example.mobilereader.data.ReaderSettings
+import com.example.mobilereader.data.TranslationSettings
 import com.example.mobilereader.data.ReadingMode
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -497,15 +504,26 @@ private fun EmptyTabHint(text: String) {
         )
     }
 }
-
-
 @Composable
 internal fun sheetMaxContentHeight(): Dp =
     LocalConfiguration.current.screenHeightDp.dp - 140.dp
 
 
+private enum class ReaderSettingsCategory(
+    val titleResource: Int,
+    val icon: ImageVector,
+) {
+    APPEARANCE(R.string.reader_settings_tab_appearance, Icons.Rounded.Palette),
+    TEXT(R.string.reader_settings_tab_text, Icons.Rounded.TextFields),
+    PAGES(R.string.reader_settings_tab_pages, Icons.AutoMirrored.Rounded.MenuBook),
+    DEVICE(R.string.reader_settings_tab_device, Icons.Rounded.Smartphone),
+    TRANSLATION(R.string.reader_settings_tab_translation, Icons.Rounded.Translate),
+}
+
 @Composable
 fun ReaderSettingsControls(
+    selectedCategoryIndex: Int,
+    onCategorySelected: (Int) -> Unit,
     settings: ReaderSettings,
     appSettings: AppSettings,
     colors: ReaderColors,
@@ -513,9 +531,203 @@ fun ReaderSettingsControls(
     onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
     onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
     onBrightnessChange: (Float?) -> Unit,
-    onTranslationSettings: () -> Unit,
+    translationSettings: TranslationSettings,
+    onSaveTranslationSettings: (TranslationSettings) -> Unit,
+    publisherStyle: PublisherStyle? = null,
+) {
+    val safeCategoryIndex = selectedCategoryIndex.coerceIn(0, ReaderSettingsCategory.entries.lastIndex)
+    val selectedCategory = ReaderSettingsCategory.entries[safeCategoryIndex]
+    val scrollState = rememberScrollState()
+    var translationPageCount by rememberSaveable(translationSettings.contextPageCount) {
+        mutableIntStateOf(translationSettings.contextPageCount)
+    }
+    var translationInstruction by rememberSaveable(translationSettings.instruction) {
+        mutableStateOf(translationSettings.instruction)
+    }
+    var translationServerAddress by rememberSaveable(translationSettings.serverAddress) {
+        mutableStateOf(translationSettings.serverAddress)
+    }
 
-    onPeekHeight: ((Int) -> Unit)? = null,
+    LaunchedEffect(selectedCategory) {
+        scrollState.scrollTo(0)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scrollState),
+        ) {
+            ReaderSettingsCategoryContent(
+                category = selectedCategory,
+                settings = settings,
+                appSettings = appSettings,
+                colors = colors,
+                brightness = brightness,
+                onUpdate = onUpdate,
+                onUpdateApp = onUpdateApp,
+                onBrightnessChange = onBrightnessChange,
+                translationSettings = TranslationSettings(
+                    contextPageCount = translationPageCount,
+                    instruction = translationInstruction,
+                    serverAddress = translationServerAddress,
+                ),
+                onTranslationSettingsChange = { updated ->
+                    translationPageCount = updated.contextPageCount
+                    translationInstruction = updated.instruction
+                    translationServerAddress = updated.serverAddress
+                },
+                onSaveTranslationSettings = {
+                    onSaveTranslationSettings(
+                        TranslationSettings(
+                            contextPageCount = translationPageCount,
+                            instruction = translationInstruction.trim(),
+                            serverAddress = translationServerAddress.trim(),
+                        ),
+                    )
+                },
+                publisherStyle = publisherStyle,
+            )
+        }
+        SecondaryScrollableTabRow(
+            selectedTabIndex = safeCategoryIndex,
+            containerColor = colors.chrome,
+            contentColor = colors.accent,
+            divider = {},
+            edgePadding = 0.dp,
+        ) {
+            ReaderSettingsCategory.entries.forEachIndexed { index, category ->
+                Tab(
+                    selected = safeCategoryIndex == index,
+                    onClick = { onCategorySelected(index) },
+                    unselectedContentColor = colors.secondaryText,
+                    icon = {
+                        Icon(
+                            imageVector = category.icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(category.titleResource),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranslationSettingsControls(
+    settings: TranslationSettings,
+    colors: ReaderColors,
+    onChange: (TranslationSettings) -> Unit,
+    onSave: () -> Unit,
+) {
+    Spacer(Modifier.height(20.dp))
+    SettingsGroup(colors) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.contextual_translation_page_count_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onChrome,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = {
+                        onChange(
+                            settings.copy(
+                                contextPageCount = (settings.contextPageCount - 1).coerceAtLeast(1),
+                            ),
+                        )
+                    },
+                    enabled = settings.contextPageCount > 1,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Remove,
+                        contentDescription = stringResource(R.string.contextual_translation_fewer_pages),
+                    )
+                }
+                Text(
+                    text = pluralStringResource(
+                        R.plurals.contextual_translation_page_count,
+                        settings.contextPageCount,
+                        settings.contextPageCount,
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.onChrome,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+                IconButton(
+                    onClick = {
+                        onChange(
+                            settings.copy(
+                                contextPageCount = (settings.contextPageCount + 1).coerceAtMost(5),
+                            ),
+                        )
+                    },
+                    enabled = settings.contextPageCount < 5,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = stringResource(R.string.contextual_translation_more_pages),
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = settings.instruction,
+                onValueChange = { onChange(settings.copy(instruction = it.take(2000))) },
+                label = { Text(stringResource(R.string.contextual_translation_instruction)) },
+                supportingText = {
+                    Text(stringResource(R.string.contextual_translation_instruction_description))
+                },
+                minLines = 3,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = settings.serverAddress,
+                onValueChange = { onChange(settings.copy(serverAddress = it)) },
+                label = { Text(stringResource(R.string.contextual_translation_server_address)) },
+                supportingText = {
+                    Text(stringResource(R.string.contextual_translation_server_description))
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = onSave,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(stringResource(R.string.contextual_translation_save))
+            }
+        }
+    }
+    Spacer(Modifier.height(24.dp))
+}
+
+@Composable
+private fun ReaderSettingsCategoryContent(
+    category: ReaderSettingsCategory,
+    settings: ReaderSettings,
+    appSettings: AppSettings,
+    colors: ReaderColors,
+    brightness: Float?,
+    onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
+    onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
+    onBrightnessChange: (Float?) -> Unit,
+    translationSettings: TranslationSettings,
+    onTranslationSettingsChange: (TranslationSettings) -> Unit,
+    onSaveTranslationSettings: () -> Unit,
 
     publisherStyle: PublisherStyle? = null,
 ) {
@@ -575,495 +787,483 @@ fun ReaderSettingsControls(
     }
 
     Column {
-        Spacer(Modifier.height(8.dp))
+        when (category) {
+            ReaderSettingsCategory.APPEARANCE -> {
+                Spacer(Modifier.height(8.dp))
 
-        val themes = AppTheme.entries
-        ChipRow(
-
-
-            options = listOf(
-                stringResource(R.string.theme_light),
-                stringResource(R.string.theme_beige),
-                stringResource(R.string.theme_midnight),
-            ),
-            selectedIndex = themes.indexOf(appSettings.theme),
-            colors = colors,
-            onSelect = { index -> onUpdateApp { it.copy(theme = themes[index]) } },
-            leading = { index ->
-                Box(
-                    Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(readerColors(themes[index]).background)
-                        .border(1.dp, colors.onChrome.copy(alpha = 0.25f), CircleShape),
-                )
-            },
-        )
-
-        Spacer(Modifier.height(20.dp))
-
-
-        val autoBrightness = brightness == null
-        fun readSystemBrightness(): Float = runCatching {
-            android.provider.Settings.System.getInt(
-                context.contentResolver,
-                android.provider.Settings.System.SCREEN_BRIGHTNESS,
-            ) / 255f
-        }.getOrDefault(0.5f)
-        var systemBrightness by remember { mutableFloatStateOf(readSystemBrightness()) }
-        DisposableEffect(Unit) {
-            val observer = object : android.database.ContentObserver(
-                android.os.Handler(android.os.Looper.getMainLooper()),
-            ) {
-                override fun onChange(selfChange: Boolean) {
-                    systemBrightness = readSystemBrightness()
-                }
-            }
-            context.contentResolver.registerContentObserver(
-                android.provider.Settings.System.getUriFor(
-                    android.provider.Settings.System.SCREEN_BRIGHTNESS,
-                ),
-                false,
-                observer,
-            )
-            onDispose { context.contentResolver.unregisterContentObserver(observer) }
-        }
-        PanelSectionLabel(stringResource(R.string.reader_brightness), colors)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Rounded.WbSunny,
-                contentDescription = null,
-                tint = colors.secondaryText,
-                modifier = Modifier.size(16.dp),
-            )
-            SettingSlider(
-                value = brightnessPosition(brightness ?: systemBrightness),
-                onChange = { position -> onBrightnessChange(brightnessFromPosition(position)) },
-                colors = colors,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-            )
-            Icon(
-                Icons.Rounded.WbSunny,
-                contentDescription = null,
-                tint = colors.onChrome,
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(10.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(
-                        if (autoBrightness) colors.accent else Color.Transparent,
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = if (autoBrightness) {
-                            Color.Transparent
-                        } else {
-                            colors.onChrome.copy(alpha = 0.3f)
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                    )
-                    .clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
-                        onBrightnessChange(null)
-                    }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Icon(
-                    Icons.Rounded.BrightnessAuto,
-                    contentDescription = null,
-                    tint = if (autoBrightness) colors.background else colors.secondaryText,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    stringResource(R.string.reader_brightness_auto),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (autoBrightness) FontWeight.Bold else FontWeight.Medium,
-                    color = if (autoBrightness) colors.background else colors.secondaryText,
-                )
-            }
-        }
-        Spacer(Modifier.height(18.dp))
-
-
-        Row {
-            Column(Modifier.weight(1f)) {
-                PanelSectionLabel(stringResource(R.string.reader_line_height), colors)
-                StepperGroup(
-                    value = "×%.1f".format(shownLineHeight),
-                    colors = colors,
-                    onDecrease = {
-                        val bake = bakeBook(book?.lineHeight != null)
-                        onUpdate {
-                            bake(it).copy(
-                                lineHeight = (((shownLineHeight - 0.1f) * 10).roundToInt() / 10f)
-                                    .coerceAtLeast(1.2f),
-                            )
-                        }
-                    },
-                    onIncrease = {
-                        val bake = bakeBook(book?.lineHeight != null)
-                        onUpdate {
-                            bake(it).copy(
-                                lineHeight = (((shownLineHeight + 0.1f) * 10).roundToInt() / 10f)
-                                    .coerceAtMost(2.0f),
-                            )
-                        }
-                    },
-                    decrease = {
-                        Icon(
-                            Icons.Rounded.DensitySmall,
-                            contentDescription = null,
-                            tint = colors.onChrome,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                    increase = {
-                        Icon(
-                            Icons.Rounded.DensityLarge,
-                            contentDescription = null,
-                            tint = colors.onChrome,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    },
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                PanelSectionLabel(stringResource(R.string.reader_font_size), colors)
-                StepperGroup(
-                    value = stringResource(
-                        R.string.reader_font_size_pt,
-                        settings.fontSizeSp.roundToInt(),
-                    ),
-                    colors = colors,
-                    onDecrease = {
-                        onUpdate { it.copy(fontSizeSp = (it.fontSizeSp - 1f).coerceAtLeast(12f)) }
-                    },
-                    onIncrease = {
-                        onUpdate { it.copy(fontSizeSp = (it.fontSizeSp + 1f).coerceAtMost(32f)) }
-                    },
-                    decrease = {
-                        Text(
-                            "A−",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.accent,
-                        )
-                    },
-                    increase = {
-                        Text(
-                            "A+",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = colors.accent,
-                        )
-                    },
-                )
-            }
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-
-        Row(
-            modifier = Modifier.onPlaced { coords ->
-                onPeekHeight?.invoke(
-                    (coords.positionInParent().y + coords.size.height).roundToInt(),
-                )
-            },
-        ) {
-            Column(Modifier.weight(1.15f)) {
-                PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
-                val marginOptions = PageMargins.entries
+                val themes = AppTheme.entries
                 ChipRow(
+
+
                     options = listOf(
-                        stringResource(R.string.reader_margins_narrow),
-                        stringResource(R.string.reader_margins_normal),
-                        stringResource(R.string.reader_margins_wide),
+                        stringResource(R.string.theme_light),
+                        stringResource(R.string.theme_beige),
+                        stringResource(R.string.theme_midnight),
                     ),
-                    selectedIndex = marginOptions.indexOf(settings.pageMargins),
+                    selectedIndex = themes.indexOf(appSettings.theme),
                     colors = colors,
-                    onSelect = { index -> onUpdate { it.copy(pageMargins = marginOptions[index]) } },
+                    onSelect = { index -> onUpdateApp { it.copy(theme = themes[index]) } },
+                    leading = { index ->
+                        Box(
+                            Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(readerColors(themes[index]).background)
+                                .border(1.dp, colors.onChrome.copy(alpha = 0.25f), CircleShape),
+                        )
+                    },
                 )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(0.85f)) {
-                PanelSectionLabel(stringResource(R.string.reader_mode), colors)
-                val modes = ReadingMode.entries
-                ChipRow(
-                    options = listOf(
-                        stringResource(R.string.reader_mode_scroll),
-                        stringResource(R.string.reader_mode_pages),
-                    ),
-                    selectedIndex = modes.indexOf(settings.readingMode),
-                    colors = colors,
-                    onSelect = { index -> onUpdate { it.copy(readingMode = modes[index]) } },
-                )
-            }
-        }
+
+                Spacer(Modifier.height(20.dp))
 
 
-        Spacer(Modifier.height(18.dp))
-
-
-        PanelSectionLabel(stringResource(R.string.reader_font), colors)
-        var showFontDialog by remember { mutableStateOf(false) }
-        var fontsVersion by remember { mutableIntStateOf(0) }
-        val fontPicker = if (LocalInspectionMode.current) null else androidx.activity.compose.rememberLauncherForActivityResult(
-            androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
-        ) { uri ->
-            if (uri != null) {
-                val stored = storeCustomFont(context, uri)
-                if (stored != null) {
-                    fontsVersion++
-                    onUpdate { it.copy(font = ReaderFont.CUSTOM, customFontPath = stored) }
-                }
-            }
-        }
-
-
-        val bookFontName = book?.fontName
-        ChipRow(
-            options = listOf(
-                stringResource(R.string.reader_font_literata),
-                stringResource(R.string.reader_font_sans),
-                bookFontName ?: stringResource(R.string.reader_font_custom),
-            ),
-            optionFontFamilies = listOf(
-                com.example.mobilereader.ui.theme.LiterataFamily,
-                androidx.compose.ui.text.font.FontFamily.SansSerif,
-                bookFontFamily,
-            ),
-            selectedIndex = when {
-                bookFontName != null -> 2
-                settings.font == ReaderFont.SANS -> 1
-                settings.font == ReaderFont.CUSTOM -> 2
-                else -> 0
-            },
-            colors = colors,
-            onSelect = { index ->
-                val bake = bakeBook(bookFontName != null, keepFont = false)
-                when (index) {
-                    0 -> onUpdate { bake(it).copy(font = ReaderFont.LITERATA) }
-                    1 -> onUpdate { bake(it).copy(font = ReaderFont.SANS) }
-                    else -> showFontDialog = true
-                }
-            },
-        )
-        if (bookFontName != null) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.reader_font_from_book),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.accent,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
-        if (showFontDialog) {
-            CustomFontsDialog(
-                colors = colors,
-                bookFonts = book?.embeddedFonts.orEmpty(),
-                bodyFontPath = book?.fontPath,
-                onPickBookFont = { font ->
-
-                    val stored = storeBookFont(context, font.path, font.name)
-                    val bake = bakeBook(bookFontName != null, keepFont = false)
-                    if (stored != null) {
-                        onUpdate {
-                            bake(it).copy(font = ReaderFont.CUSTOM, customFontPath = stored)
+                val autoBrightness = brightness == null
+                fun readSystemBrightness(): Float = runCatching {
+                    android.provider.Settings.System.getInt(
+                        context.contentResolver,
+                        android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                    ) / 255f
+                }.getOrDefault(0.5f)
+                var systemBrightness by remember { mutableFloatStateOf(readSystemBrightness()) }
+                DisposableEffect(Unit) {
+                    val observer = object : android.database.ContentObserver(
+                        android.os.Handler(android.os.Looper.getMainLooper()),
+                    ) {
+                        override fun onChange(selfChange: Boolean) {
+                            systemBrightness = readSystemBrightness()
                         }
                     }
-                    showFontDialog = false
-                },
-                selectedPath = settings.customFontPath
-                    ?.takeIf { settings.font == ReaderFont.CUSTOM },
-                fontsVersion = fontsVersion,
-                onAdd = {
-                    fontPicker?.launch(
-                        arrayOf(
-                            "font/ttf",
-                            "font/otf",
-                            "font/*",
-                            "application/x-font-ttf",
-                            "application/octet-stream",
+                    context.contentResolver.registerContentObserver(
+                        android.provider.Settings.System.getUriFor(
+                            android.provider.Settings.System.SCREEN_BRIGHTNESS,
                         ),
+                        false,
+                        observer,
                     )
-                },
-                onPick = { path ->
-                    val bake = bakeBook(bookFontName != null, keepFont = false)
-                    onUpdate { bake(it).copy(font = ReaderFont.CUSTOM, customFontPath = path) }
-                    showFontDialog = false
-                },
-                onDelete = { path ->
-                    java.io.File(path).delete()
-                    fontsVersion++
-                    if (settings.customFontPath == path) {
-                        onUpdate {
-                            it.copy(
-                                font = if (it.font == ReaderFont.CUSTOM) {
-                                    ReaderFont.LITERATA
-                                } else {
-                                    it.font
-                                },
-                                customFontPath = null,
+                    onDispose { context.contentResolver.unregisterContentObserver(observer) }
+                }
+                PanelSectionLabel(stringResource(R.string.reader_brightness), colors)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.WbSunny,
+                        contentDescription = null,
+                        tint = colors.secondaryText,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    SettingSlider(
+                        value = brightnessPosition(brightness ?: systemBrightness),
+                        onChange = { position -> onBrightnessChange(brightnessFromPosition(position)) },
+                        colors = colors,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp),
+                    )
+                    Icon(
+                        Icons.Rounded.WbSunny,
+                        contentDescription = null,
+                        tint = colors.onChrome,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (autoBrightness) colors.accent else Color.Transparent,
                             )
+                            .border(
+                                width = 1.dp,
+                                color = if (autoBrightness) {
+                                    Color.Transparent
+                                } else {
+                                    colors.onChrome.copy(alpha = 0.3f)
+                                },
+                                shape = RoundedCornerShape(20.dp),
+                            )
+                            .clickable {
+                                haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                                onBrightnessChange(null)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.BrightnessAuto,
+                            contentDescription = null,
+                            tint = if (autoBrightness) colors.background else colors.secondaryText,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            stringResource(R.string.reader_brightness_auto),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (autoBrightness) FontWeight.Bold else FontWeight.Medium,
+                            color = if (autoBrightness) colors.background else colors.secondaryText,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+
+                SettingsGroup(colors) {
+                    SettingToggleRow(
+                        icon = Icons.Rounded.InvertColors,
+                        title = stringResource(R.string.reader_invert_images),
+                        subtitle = stringResource(R.string.reader_invert_images_subtitle),
+                        colors = colors,
+                        checked = appSettings.autoInvertImages,
+                        onCheckedChange = { onUpdateApp { s -> s.copy(autoInvertImages = it) } },
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+                Row {
+                    Column(Modifier.weight(1f)) {
+                        PanelSectionLabel(stringResource(R.string.reader_line_height), colors)
+                        StepperGroup(
+                            value = "×%.1f".format(shownLineHeight),
+                            colors = colors,
+                            onDecrease = {
+                                val bake = bakeBook(book?.lineHeight != null)
+                                onUpdate {
+                                    bake(it).copy(
+                                        lineHeight = (((shownLineHeight - 0.1f) * 10).roundToInt() / 10f)
+                                            .coerceAtLeast(1.2f),
+                                    )
+                                }
+                            },
+                            onIncrease = {
+                                val bake = bakeBook(book?.lineHeight != null)
+                                onUpdate {
+                                    bake(it).copy(
+                                        lineHeight = (((shownLineHeight + 0.1f) * 10).roundToInt() / 10f)
+                                            .coerceAtMost(2.0f),
+                                    )
+                                }
+                            },
+                            decrease = {
+                                Icon(
+                                    Icons.Rounded.DensitySmall,
+                                    contentDescription = null,
+                                    tint = colors.onChrome,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                            increase = {
+                                Icon(
+                                    Icons.Rounded.DensityLarge,
+                                    contentDescription = null,
+                                    tint = colors.onChrome,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            },
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        PanelSectionLabel(stringResource(R.string.reader_font_size), colors)
+                        StepperGroup(
+                            value = stringResource(
+                                R.string.reader_font_size_pt,
+                                settings.fontSizeSp.roundToInt(),
+                            ),
+                            colors = colors,
+                            onDecrease = {
+                                onUpdate { it.copy(fontSizeSp = (it.fontSizeSp - 1f).coerceAtLeast(12f)) }
+                            },
+                            onIncrease = {
+                                onUpdate { it.copy(fontSizeSp = (it.fontSizeSp + 1f).coerceAtMost(32f)) }
+                            },
+                            decrease = {
+                                Text(
+                                    "A−",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.accent,
+                                )
+                            },
+                            increase = {
+                                Text(
+                                    "A+",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = colors.accent,
+                                )
+                            },
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+
+                PanelSectionLabel(stringResource(R.string.reader_font), colors)
+                var showFontDialog by remember { mutableStateOf(false) }
+                var fontsVersion by remember { mutableIntStateOf(0) }
+                val fontPicker = if (LocalInspectionMode.current) null else androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    if (uri != null) {
+                        val stored = storeCustomFont(context, uri)
+                        if (stored != null) {
+                            fontsVersion++
+                            onUpdate { it.copy(font = ReaderFont.CUSTOM, customFontPath = stored) }
                         }
                     }
-                },
-                onDismiss = { showFontDialog = false },
-            )
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        PanelSectionLabel(
-            stringResource(R.string.reader_section_text_layout),
-            colors,
-            icon = Icons.Rounded.TextFields,
-        )
-        SettingsGroup(colors) {
-            SettingToggleRow(
-                icon = Icons.Rounded.AutoFixHigh,
-                title = stringResource(R.string.reader_book_styles),
-                subtitle = stringResource(R.string.reader_book_styles_subtitle),
-                colors = colors,
-                checked = settings.bookStyles,
-                onCheckedChange = { onUpdate { s -> s.copy(bookStyles = it) } },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.Rounded.FormatAlignJustify,
-                title = stringResource(R.string.reader_justify),
-                colors = colors,
-                checked = shownJustify,
-                fromBook = book?.justify != null,
-                onCheckedChange = { value ->
-                    val bake = bakeBook(book?.justify != null)
-                    onUpdate { s -> bake(s).copy(justify = value) }
-                },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.Rounded.Remove,
-                title = stringResource(R.string.reader_hyphenation),
-                colors = colors,
-                checked = shownHyphenation,
-                fromBook = book?.hyphenation != null,
-                onCheckedChange = { value ->
-                    val bake = bakeBook(book?.hyphenation != null)
-                    onUpdate { s -> bake(s).copy(hyphenation = value) }
-                },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.Rounded.FormatSize,
-                title = stringResource(R.string.reader_drop_caps),
-                subtitle = stringResource(R.string.reader_drop_caps_subtitle),
-                colors = colors,
-                checked = shownDropCaps,
-                fromBook = book?.dropCaps == true,
-                onCheckedChange = { value ->
-                    val bake = bakeBook(book?.dropCaps == true)
-                    onUpdate { s -> bake(s).copy(dropCaps = value) }
-                },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.Rounded.InvertColors,
-                title = stringResource(R.string.reader_invert_images),
-                subtitle = stringResource(R.string.reader_invert_images_subtitle),
-                colors = colors,
-                checked = appSettings.autoInvertImages,
-                onCheckedChange = { onUpdateApp { s -> s.copy(autoInvertImages = it) } },
-            )
-            PanelDivider(colors)
-            SettingNavigationRow(
-                icon = Icons.Rounded.Translate,
-                title = stringResource(R.string.contextual_translation_settings),
-                colors = colors,
-                onClick = onTranslationSettings,
-            )
-        }
-
-        Spacer(Modifier.height(20.dp))
+                }
 
 
-        PanelSectionLabel(
-            stringResource(R.string.reader_section_pages_nav),
-            colors,
-            icon = Icons.AutoMirrored.Rounded.MenuBook,
-        )
-        SettingsGroup(colors) {
-            if (settings.readingMode == ReadingMode.PAGES) {
-                SettingToggleRow(
-                    icon = Icons.AutoMirrored.Rounded.MenuBook,
-                    title = stringResource(R.string.reader_section_page_anim),
+                val bookFontName = book?.fontName
+                ChipRow(
+                    options = listOf(
+                        stringResource(R.string.reader_font_literata),
+                        stringResource(R.string.reader_font_sans),
+                        bookFontName ?: stringResource(R.string.reader_font_custom),
+                    ),
+                    optionFontFamilies = listOf(
+                        com.example.mobilereader.ui.theme.LiterataFamily,
+                        androidx.compose.ui.text.font.FontFamily.SansSerif,
+                        bookFontFamily,
+                    ),
+                    selectedIndex = when {
+                        bookFontName != null -> 2
+                        settings.font == ReaderFont.SANS -> 1
+                        settings.font == ReaderFont.CUSTOM -> 2
+                        else -> 0
+                    },
                     colors = colors,
-                    checked = settings.pageTurnAnimationEnabled,
-                    onCheckedChange = { onUpdate { s -> s.copy(pageTurnAnimationEnabled = it) } },
+                    onSelect = { index ->
+                        val bake = bakeBook(bookFontName != null, keepFont = false)
+                        when (index) {
+                            0 -> onUpdate { bake(it).copy(font = ReaderFont.LITERATA) }
+                            1 -> onUpdate { bake(it).copy(font = ReaderFont.SANS) }
+                            else -> showFontDialog = true
+                        }
+                    },
                 )
-                PanelDivider(colors)
-                SettingToggleRow(
-                    icon = Icons.AutoMirrored.Rounded.MenuBook,
-                    title = stringResource(R.string.reader_chapter_new_page),
-                    colors = colors,
-                    checked = settings.startChaptersOnNewPage,
-                    onCheckedChange = { onUpdate { s -> s.copy(startChaptersOnNewPage = it) } },
-                )
-                PanelDivider(colors)
-                SettingToggleRow(
-                    icon = Icons.Rounded.Tag,
-                    title = stringResource(R.string.reader_show_chapter_pages),
-                    colors = colors,
-                    checked = settings.showChapterPagesLeft,
-                    onCheckedChange = { onUpdate { s -> s.copy(showChapterPagesLeft = it) } },
-                )
-                PanelDivider(colors)
+                if (bookFontName != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.reader_font_from_book),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.accent,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+                if (showFontDialog) {
+                    CustomFontsDialog(
+                        colors = colors,
+                        bookFonts = book?.embeddedFonts.orEmpty(),
+                        bodyFontPath = book?.fontPath,
+                        onPickBookFont = { font ->
+
+                            val stored = storeBookFont(context, font.path, font.name)
+                            val bake = bakeBook(bookFontName != null, keepFont = false)
+                            if (stored != null) {
+                                onUpdate {
+                                    bake(it).copy(font = ReaderFont.CUSTOM, customFontPath = stored)
+                                }
+                            }
+                            showFontDialog = false
+                        },
+                        selectedPath = settings.customFontPath
+                            ?.takeIf { settings.font == ReaderFont.CUSTOM },
+                        fontsVersion = fontsVersion,
+                        onAdd = {
+                            fontPicker?.launch(
+                                arrayOf(
+                                    "font/ttf",
+                                    "font/otf",
+                                    "font/*",
+                                    "application/x-font-ttf",
+                                    "application/octet-stream",
+                                ),
+                            )
+                        },
+                        onPick = { path ->
+                            val bake = bakeBook(bookFontName != null, keepFont = false)
+                            onUpdate { bake(it).copy(font = ReaderFont.CUSTOM, customFontPath = path) }
+                            showFontDialog = false
+                        },
+                        onDelete = { path ->
+                            java.io.File(path).delete()
+                            fontsVersion++
+                            if (settings.customFontPath == path) {
+                                onUpdate {
+                                    it.copy(
+                                        font = if (it.font == ReaderFont.CUSTOM) {
+                                            ReaderFont.LITERATA
+                                        } else {
+                                            it.font
+                                        },
+                                        customFontPath = null,
+                                    )
+                                }
+                            }
+                        },
+                        onDismiss = { showFontDialog = false },
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
             }
-            SettingToggleRow(
-                icon = Icons.Rounded.Superscript,
-                title = stringResource(R.string.reader_hide_footnotes),
-                subtitle = stringResource(R.string.reader_hide_footnotes_subtitle),
-                colors = colors,
-                checked = settings.hideFootnotes,
-                onCheckedChange = { onUpdate { s -> s.copy(hideFootnotes = it) } },
-            )
+            ReaderSettingsCategory.TEXT -> {
+                Spacer(Modifier.height(22.dp))
+                SettingsGroup(colors) {
+                    SettingToggleRow(
+                        icon = Icons.Rounded.AutoFixHigh,
+                        title = stringResource(R.string.reader_book_styles),
+                        subtitle = stringResource(R.string.reader_book_styles_subtitle),
+                        colors = colors,
+                        checked = settings.bookStyles,
+                        onCheckedChange = { onUpdate { s -> s.copy(bookStyles = it) } },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.Rounded.FormatAlignJustify,
+                        title = stringResource(R.string.reader_justify),
+                        colors = colors,
+                        checked = shownJustify,
+                        fromBook = book?.justify != null,
+                        onCheckedChange = { value ->
+                            val bake = bakeBook(book?.justify != null)
+                            onUpdate { s -> bake(s).copy(justify = value) }
+                        },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.Rounded.Remove,
+                        title = stringResource(R.string.reader_hyphenation),
+                        colors = colors,
+                        checked = shownHyphenation,
+                        fromBook = book?.hyphenation != null,
+                        onCheckedChange = { value ->
+                            val bake = bakeBook(book?.hyphenation != null)
+                            onUpdate { s -> bake(s).copy(hyphenation = value) }
+                        },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.Rounded.FormatSize,
+                        title = stringResource(R.string.reader_drop_caps),
+                        subtitle = stringResource(R.string.reader_drop_caps_subtitle),
+                        colors = colors,
+                        checked = shownDropCaps,
+                        fromBook = book?.dropCaps == true,
+                        onCheckedChange = { value ->
+                            val bake = bakeBook(book?.dropCaps == true)
+                            onUpdate { s -> bake(s).copy(dropCaps = value) }
+                        },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.Rounded.Superscript,
+                        title = stringResource(R.string.reader_hide_footnotes),
+                        subtitle = stringResource(R.string.reader_hide_footnotes_subtitle),
+                        colors = colors,
+                        checked = settings.hideFootnotes,
+                        onCheckedChange = { onUpdate { s -> s.copy(hideFootnotes = it) } },
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+            ReaderSettingsCategory.PAGES -> {
+                Spacer(Modifier.height(18.dp))
+
+
+                Row {
+                    Column(Modifier.weight(1.15f)) {
+                        PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
+                        val marginOptions = PageMargins.entries
+                        ChipRow(
+                            options = listOf(
+                                stringResource(R.string.reader_margins_narrow),
+                                stringResource(R.string.reader_margins_normal),
+                                stringResource(R.string.reader_margins_wide),
+                            ),
+                            selectedIndex = marginOptions.indexOf(settings.pageMargins),
+                            colors = colors,
+                            onSelect = { index -> onUpdate { it.copy(pageMargins = marginOptions[index]) } },
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(0.85f)) {
+                        PanelSectionLabel(stringResource(R.string.reader_mode), colors)
+                        val modes = ReadingMode.entries
+                        ChipRow(
+                            options = listOf(
+                                stringResource(R.string.reader_mode_scroll),
+                                stringResource(R.string.reader_mode_pages),
+                            ),
+                            selectedIndex = modes.indexOf(settings.readingMode),
+                            colors = colors,
+                            onSelect = { index -> onUpdate { it.copy(readingMode = modes[index]) } },
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+                PanelSectionLabel(stringResource(R.string.reader_section_page_mode_settings), colors)
+                SettingsGroup(colors) {
+                    SettingToggleRow(
+                        icon = Icons.AutoMirrored.Rounded.MenuBook,
+                        title = stringResource(R.string.reader_section_page_anim),
+                        colors = colors,
+                        checked = settings.pageTurnAnimationEnabled,
+                        onCheckedChange = { onUpdate { s -> s.copy(pageTurnAnimationEnabled = it) } },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.AutoMirrored.Rounded.MenuBook,
+                        title = stringResource(R.string.reader_chapter_new_page),
+                        colors = colors,
+                        checked = settings.startChaptersOnNewPage,
+                        onCheckedChange = { onUpdate { s -> s.copy(startChaptersOnNewPage = it) } },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.Rounded.Tag,
+                        title = stringResource(R.string.reader_show_chapter_pages),
+                        colors = colors,
+                        checked = settings.showChapterPagesLeft,
+                        onCheckedChange = { onUpdate { s -> s.copy(showChapterPagesLeft = it) } },
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+            ReaderSettingsCategory.DEVICE -> {
+                Spacer(Modifier.height(20.dp))
+                SettingsGroup(colors) {
+                    SettingToggleRow(
+                        icon = Icons.Rounded.Lightbulb,
+                        title = stringResource(R.string.settings_keep_screen_on),
+                        colors = colors,
+                        checked = appSettings.keepScreenOn,
+                        onCheckedChange = { onUpdateApp { s -> s.copy(keepScreenOn = it) } },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.AutoMirrored.Rounded.VolumeUp,
+                        title = stringResource(R.string.reader_volume_keys),
+                        colors = colors,
+                        checked = appSettings.volumeKeyPaging,
+                        onCheckedChange = { onUpdateApp { s -> s.copy(volumeKeyPaging = it) } },
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+            }
+            ReaderSettingsCategory.TRANSLATION -> {
+                TranslationSettingsControls(
+                    settings = translationSettings,
+                    colors = colors,
+                    onChange = onTranslationSettingsChange,
+                    onSave = onSaveTranslationSettings,
+                )
+            }
         }
-
-        Spacer(Modifier.height(20.dp))
-
-
-        PanelSectionLabel(
-            stringResource(R.string.reader_section_device),
-            colors,
-            icon = Icons.Rounded.Smartphone,
-        )
-        SettingsGroup(colors) {
-            SettingToggleRow(
-                icon = Icons.Rounded.Lightbulb,
-                title = stringResource(R.string.settings_keep_screen_on),
-                colors = colors,
-                checked = appSettings.keepScreenOn,
-                onCheckedChange = { onUpdateApp { s -> s.copy(keepScreenOn = it) } },
-            )
-            PanelDivider(colors)
-            SettingToggleRow(
-                icon = Icons.AutoMirrored.Rounded.VolumeUp,
-                title = stringResource(R.string.reader_volume_keys),
-                colors = colors,
-                checked = appSettings.volumeKeyPaging,
-                onCheckedChange = { onUpdateApp { s -> s.copy(volumeKeyPaging = it) } },
-            )
-        }
-
-        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -1500,28 +1700,14 @@ private fun SettingSlider(
 private fun PanelSectionLabel(
     text: String,
     colors: ReaderColors,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = colors.secondaryText,
+        letterSpacing = 1.2.sp,
         modifier = Modifier.padding(bottom = 10.dp),
-    ) {
-        if (icon != null) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = colors.secondaryText,
-                modifier = Modifier.size(15.dp),
-            )
-            Spacer(Modifier.width(6.dp))
-        }
-        Text(
-            text = text.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.secondaryText,
-            letterSpacing = 1.2.sp,
-        )
-    }
+    )
 }
 
 @Composable
@@ -1608,45 +1794,6 @@ private fun SettingToggleRow(
                 )
                 onCheckedChange(value)
             },
-        )
-    }
-}
-
-
-@Composable
-private fun SettingNavigationRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    colors: ReaderColors,
-    onClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = colors.onChrome,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(16.dp))
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = colors.onChrome,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(12.dp))
-        Icon(
-            Icons.AutoMirrored.Rounded.ArrowForward,
-            contentDescription = null,
-            tint = colors.secondaryText,
-            modifier = Modifier.size(20.dp),
         )
     }
 }

@@ -178,6 +178,7 @@ import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.data.ReaderSettings
 import com.example.mobilereader.data.ReadingMode
+import com.example.mobilereader.data.TranslationSettings
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.EXTERNAL_LINK_TAG
@@ -361,7 +362,6 @@ private fun ReaderContent(
     val liveBook by viewModel.book.collectAsStateWithLifecycle()
     val translationSettings by viewModel.translationSettings.collectAsStateWithLifecycle()
     val translationState by viewModel.translationState.collectAsStateWithLifecycle()
-    var translationSettingsVisible by remember { mutableStateOf(false) }
     var translationSelection by remember { mutableStateOf<BookSelection?>(null) }
 
 
@@ -1069,7 +1069,8 @@ private fun ReaderContent(
             onUpdate = { transform -> viewModel.updateSettings(transform) },
             onUpdateApp = { transform -> viewModel.updateAppSettings(transform) },
             onBrightnessChange = setBrightness,
-            onTranslationSettings = { translationSettingsVisible = true },
+            translationSettings = translationSettings,
+            onSaveTranslationSettings = { updated -> viewModel.updateTranslationSettings { updated } },
             onChapterClick = { target ->
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                 when (target) {
@@ -1196,14 +1197,6 @@ private fun ReaderContent(
                 }
             },
             onDismiss = { noteToShow = null },
-        )
-    }
-
-    if (translationSettingsVisible) {
-        ContextualTranslationSettingsSheet(
-            settings = translationSettings,
-            onSave = { updated -> viewModel.updateTranslationSettings { updated } },
-            onDismiss = { translationSettingsVisible = false },
         )
     }
 
@@ -3373,7 +3366,8 @@ private fun ReaderBottomBar(
     onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
     onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
     onBrightnessChange: (Float?) -> Unit,
-    onTranslationSettings: () -> Unit,
+    translationSettings: TranslationSettings,
+    onSaveTranslationSettings: (TranslationSettings) -> Unit,
     onChapterClick: (ReaderNavigationTarget) -> Unit,
     onBookmarkClick: (Int) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -3392,9 +3386,7 @@ private fun ReaderBottomBar(
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
 
-    var halfPx by remember {
-        mutableFloatStateOf(with(density) { (screenHeight * 0.48f).toPx() })
-    }
+    val halfPx = with(density) { (screenHeight * 0.48f).toPx() }
     val windowHeightPx = LocalWindowInfo.current.containerSize.height.toFloat()
     val statusTopPx = with(density) {
         WindowInsets.systemBarsIgnoringVisibility.asPaddingValues().calculateTopPadding().toPx()
@@ -3411,6 +3403,7 @@ private fun ReaderBottomBar(
     val panelHeight = panelMotion.height
     val panelOpen = panelMotion.isOpen
     var panelContent by remember { mutableStateOf(BarPanel.SETTINGS) }
+    var selectedSettingsCategoryIndex by rememberSaveable { mutableIntStateOf(0) }
 
     fun settlePanel(targetPx: Float) = panelMotion.animateTo(targetPx)
 
@@ -3578,30 +3571,20 @@ private fun ReaderBottomBar(
                                 .nestedScroll(panelNestedScroll),
                         ) {
                             when (panelContent) {
-                                BarPanel.SETTINGS -> Column(
-                                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                                ) {
-                                    ReaderSettingsControls(
-                                        settings = settings,
-                                        appSettings = appSettings,
-                                        colors = colors,
-                                        publisherStyle = ready.publisherStyle,
-                                        brightness = brightness,
-                                        onUpdate = onUpdate,
-                                        onUpdateApp = onUpdateApp,
-                                        onBrightnessChange = onBrightnessChange,
-                                        onTranslationSettings = onTranslationSettings,
-                                        onPeekHeight = { measured ->
-                                            val target = measured +
-                                                with(density) { 10.dp.toPx() }
-                                            if (abs(target - halfPx) > 2f) {
-                                                val previous = halfPx
-                                                halfPx = target
-                                                panelMotion.updatePeek(previous, target)
-                                            }
-                                        },
-                                    )
-                                }
+                                BarPanel.SETTINGS -> ReaderSettingsControls(
+                                    selectedCategoryIndex = selectedSettingsCategoryIndex,
+                                    onCategorySelected = { selectedSettingsCategoryIndex = it },
+                                    settings = settings,
+                                    appSettings = appSettings,
+                                    colors = colors,
+                                    publisherStyle = ready.publisherStyle,
+                                    brightness = brightness,
+                                    onUpdate = onUpdate,
+                                    onUpdateApp = onUpdateApp,
+                                    onBrightnessChange = onBrightnessChange,
+                                    translationSettings = translationSettings,
+                                    onSaveTranslationSettings = onSaveTranslationSettings,
+                                )
 
                                 BarPanel.CONTENTS -> ReaderPanelsContent(
                                     colorScheme = appColorSchemeFor(appSettings.theme, appSettings.dynamicColor),

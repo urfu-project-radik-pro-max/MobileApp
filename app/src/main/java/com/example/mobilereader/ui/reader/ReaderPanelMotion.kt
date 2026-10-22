@@ -7,7 +7,6 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 
 internal class ReaderPanelMotion(private val scope: CoroutineScope) {
@@ -34,10 +33,5 @@ internal class ReaderPanelMotion(private val scope: CoroutineScope) {
     fun startDrag() {
         job?.cancel()
         targetHeight = height.value
-    }
-
-
-    fun updatePeek(previous: Float, next: Float) {
-        if (isOpen && abs(targetHeight - previous) < 1f) animateTo(next)
     }
 }

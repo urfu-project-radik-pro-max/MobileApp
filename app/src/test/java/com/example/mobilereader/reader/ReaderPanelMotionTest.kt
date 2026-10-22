@@ -57,30 +57,4 @@ class ReaderPanelMotionTest {
         assertEquals(400f, panel.height.value, 0.5f)
     }
 
-    @Test
-    fun `late settings measurement cannot reopen a panel after a chapter was selected`() = runTest {
-        val panel = panel()
-        panel.snapTo(400f)
-        advanceUntilIdle()
-        panel.animateTo(0f)
-        panel.updatePeek(previous = 400f, next = 460f)
-        advanceUntilIdle()
-
-        assertFalse(panel.isOpen)
-        assertEquals(0f, panel.height.value, 0.5f)
-    }
-
-    @Test
-    fun `settings measurement resizes only an open peek and preserves full height`() = runTest {
-        val panel = panel()
-        panel.animateTo(400f)
-        panel.updatePeek(previous = 400f, next = 460f)
-        advanceUntilIdle()
-        assertEquals(460f, panel.height.value, 0.5f)
-
-        panel.animateTo(800f)
-        panel.updatePeek(previous = 460f, next = 500f)
-        advanceUntilIdle()
-        assertEquals(800f, panel.height.value, 0.5f)
-    }
 }

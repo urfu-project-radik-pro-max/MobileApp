@@ -9,6 +9,11 @@
     <string name="reader_collapse_section">Collapse section</string>
     <string name="reader_contents">Contents</string>
     <string name="reader_settings">Reading settings</string>
+    <string name="reader_settings_tab_appearance">Appearance &amp; font</string>
+    <string name="reader_settings_tab_text">Text</string>
+    <string name="reader_settings_tab_pages">Pages</string>
+    <string name="reader_settings_tab_device">Device</string>
+    <string name="reader_settings_tab_translation">Translate</string>
     <string name="reader_chapter_n">Chapter %1$d</string>
     <string name="reader_font_size">Font size</string>
     <string name="reader_line_height">Line spacing</string>
@@ -68,14 +73,12 @@
     <string name="reader_brightness_auto">Auto</string>
     <string name="reader_font_size_pt">%1$d pt</string>
     <string name="reader_section_page_anim">Page-turn animation</string>
+    <string name="reader_section_page_mode_settings">Page mode settings</string>
     <string name="reader_font_custom">Custom</string>
     <string name="reader_fonts_title">Custom fonts</string>
     <string name="reader_font_add">Add font</string>
     <string name="reader_font_delete">Delete</string>
     <string name="reader_fonts_empty">Fonts you add will appear here and stay available for every book.</string>
-    <string name="reader_section_text_layout">Text &amp; layout</string>
-    <string name="reader_section_pages_nav">Pages &amp; navigation</string>
-    <string name="reader_section_device">Device</string>
     <string name="reader_section_margins">Side margins</string>
     <string name="reader_margins_narrow">Narrow</string>
     <string name="reader_margins_normal">Normal</string>
@@ -102,7 +105,6 @@
     <string name="duration_less_min">less than a minute</string>
     <string name="settings_close">Close</string>
     <string name="contextual_translation_title">Contextual translation</string>
-    <string name="contextual_translation_settings">Translation settings</string>
     <string name="contextual_translation_page_count_description">Pages of context: the selected page and preceding pages. In scroll mode, a similar amount of text is used.</string>
     <string name="contextual_translation_fewer_pages">Use fewer pages</string>
     <string name="contextual_translation_more_pages">Use more pages</string>

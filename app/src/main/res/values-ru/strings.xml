@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="reader_settings_tab_appearance">Вид и шрифт</string>
+    <string name="reader_settings_tab_text">Текст</string>
+    <string name="reader_settings_tab_pages">Страницы</string>
+    <string name="reader_settings_tab_device">Устройство</string>
+    <string name="reader_settings_tab_translation">Перевод</string>
+    <string name="reader_section_page_mode_settings">Настройки постраничного режима</string>
     <string name="selection_translate">Перевести</string>
     <string name="contextual_translation_title">Контекстный перевод</string>
-    <string name="contextual_translation_settings">Настройки перевода</string>
     <string name="contextual_translation_page_count_description">Страницы контекста: текущая и предыдущие. В режиме прокрутки используется сопоставимый объём текста.</string>
     <string name="contextual_translation_fewer_pages">Уменьшить число страниц</string>
     <string name="contextual_translation_more_pages">Увеличить число страниц</string>
