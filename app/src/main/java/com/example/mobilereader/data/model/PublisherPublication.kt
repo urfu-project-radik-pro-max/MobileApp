@@ -150,14 +150,7 @@ data class PublisherResource(
     val path: String,
     val mediaType: String,
     val properties: Set<String> = emptySet(),
-    val transform: PublisherResourceTransform = PublisherResourceTransform.NONE,
 )
-
-enum class PublisherResourceTransform {
-    NONE,
-    IDPF_FONT_OBFUSCATION,
-    ADOBE_FONT_OBFUSCATION,
-}
 
 enum class PublisherCapability {
     MATHML,

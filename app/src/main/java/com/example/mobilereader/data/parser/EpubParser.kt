@@ -14,7 +14,6 @@ import com.example.mobilereader.data.model.PrimaryWritingMode
 import com.example.mobilereader.data.model.PublisherCapability
 import com.example.mobilereader.data.model.PublisherPublication
 import com.example.mobilereader.data.model.PublisherResource
-import com.example.mobilereader.data.model.PublisherResourceTransform
 import com.example.mobilereader.data.model.PublisherRendition
 import com.example.mobilereader.data.model.PublisherSourceDescriptor
 import com.example.mobilereader.data.model.PublisherSpineItem
@@ -25,6 +24,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
+import java.io.DataInputStream
 import java.io.File
 import java.net.URLDecoder
 import java.util.Locale
@@ -35,7 +35,7 @@ import java.util.zip.ZipFile
 object EpubParser {
 
 
-    private const val FONT_PIPELINE_VERSION = 1
+    private const val FONT_PIPELINE_VERSION = 2
     private const val DTBOOK_MEDIA_TYPE = "application/x-dtbook+xml"
 
     private class ManifestItem(
@@ -279,11 +279,6 @@ object EpubParser {
 
 
             val encryption = parseEncryption(epubArchive, budget, limits)
-            val fontKeys = if (encryption.isEmpty()) {
-                FontKeys(null, emptyList())
-            } else {
-                fontKeysFrom(packageDocument)
-            }
 
             val spine = spineItems(packageDocument, items)
 
@@ -408,7 +403,6 @@ object EpubParser {
                         imagesDir,
                         fonts,
                         encryption,
-                        fontKeys,
                         budget,
                         limits,
                     )
@@ -761,7 +755,7 @@ object EpubParser {
         items: List<ManifestItem>,
         titlesByPath: Map<String, List<TocEntry>>,
         documents: Map<String, PublisherDocumentInfo>,
-        encryption: Map<String, String>,
+        encryption: Set<String>,
         limits: ReaderResourceLimits = ReaderResourceLimits.DEFAULT,
     ): PublisherPublication? {
         val resources = publisherResources(
@@ -823,7 +817,7 @@ object EpubParser {
         epubArchive: ZipFile,
         packageDirectory: String,
         items: List<ManifestItem>,
-        encryption: Map<String, String>,
+        encryption: Set<String>,
         limits: ReaderResourceLimits,
     ): Map<String, PublisherResource> {
         val resources = linkedMapOf<String, PublisherResource>()
@@ -835,21 +829,7 @@ object EpubParser {
             val declaredLimit = publisherResourceLimit(mediaType, limits)
             if (entry.size > declaredLimit) continue
 
-            val algorithm = encryption[path]
-            val transform = when (algorithm) {
-                null -> PublisherResourceTransform.NONE
-                FontObfuscation.IDPF_ALGORITHM -> {
-                    if (!isPublisherFont(mediaType)) continue
-                    PublisherResourceTransform.IDPF_FONT_OBFUSCATION
-                }
-
-                FontObfuscation.ADOBE_ALGORITHM -> {
-                    if (!isPublisherFont(mediaType)) continue
-                    PublisherResourceTransform.ADOBE_FONT_OBFUSCATION
-                }
-
-                else -> continue
-            }
+            if (path in encryption) continue
             val properties = item.propertyTokens()
             val existing = resources[path]
             if (existing == null) {
@@ -857,9 +837,8 @@ object EpubParser {
                     path = path,
                     mediaType = mediaType,
                     properties = properties,
-                    transform = transform,
                 )
-            } else if (existing.mediaType == mediaType && existing.transform == transform) {
+            } else if (existing.mediaType == mediaType) {
 
 
                 resources[path] = existing.copy(properties = existing.properties + properties)
@@ -1175,59 +1154,34 @@ object EpubParser {
     }
 
 
-    private class FontKeys(
-        val idpf: ByteArray?,
-
-        val adobe: List<ByteArray>,
-    )
-
-    private fun fontKeysFrom(packageDocument: Document): FontKeys {
-        val identifiers = packageDocument.select("metadata > dc|identifier")
-        val uniqueId = packageDocument.selectFirst("package")?.attr("unique-identifier").orEmpty()
-        val unique = identifiers.firstOrNull { uniqueId.isNotEmpty() && it.attr("id") == uniqueId }
-            ?: identifiers.firstOrNull()
-        return FontKeys(
-            idpf = unique?.text()?.trim()
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { FontObfuscation.idpfKey(it) },
-            adobe = identifiers
-                .mapNotNull { FontObfuscation.adobeKey(it.text()) }
-                .distinctBy { it.toList() },
-        )
-    }
-
-
     private fun parseEncryption(
         epubArchive: ZipFile,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
-    ): Map<String, String> {
-        val entry = zipEntry(epubArchive, "META-INF/encryption.xml") ?: return emptyMap()
+    ): Set<String> {
+        val entry = zipEntry(epubArchive, "META-INF/encryption.xml") ?: return emptySet()
         val bytes = budget.readOptional(
             entry,
             limits.maxPackageXmlBytes,
             "EPUB encryption metadata",
-        ) ?: return emptyMap()
+        ) ?: return emptySet()
         val doc = runCatching {
             Jsoup.parse(bytes.inputStream(), "UTF-8", "", Parser.xmlParser())
-        }.getOrNull() ?: return emptyMap()
+        }.getOrNull() ?: return emptySet()
 
         fun Element.localName() = tagName().substringAfter(':')
 
-        val out = mutableMapOf<String, String>()
+        val encryptedPaths = mutableSetOf<String>()
         for (data in doc.getAllElements()) {
             if (!data.localName().equals("EncryptedData", ignoreCase = true)) continue
-            val algorithm = data.getAllElements()
-                .firstOrNull { it.localName().equals("EncryptionMethod", ignoreCase = true) }
-                ?.attr("Algorithm")
             val uri = data.getAllElements()
                 .firstOrNull { it.localName().equals("CipherReference", ignoreCase = true) }
                 ?.attr("URI")
-            if (algorithm.isNullOrEmpty() || uri.isNullOrEmpty()) continue
+            if (uri.isNullOrEmpty()) continue
 
-            out[resolvePath("", uri)] = algorithm
+            encryptedPaths += resolvePath("", uri)
         }
-        return out
+        return encryptedPaths
     }
 
 
@@ -1238,18 +1192,31 @@ object EpubParser {
             displayName = entryPath,
         )
 
+    private fun cachedFontHasValidSignature(file: File, maxFontBytes: Long): Boolean {
+        if (file.length() !in 4L..maxFontBytes) return false
+        return runCatching {
+            DataInputStream(file.inputStream()).use { stream ->
+                val signature = ByteArray(4)
+                stream.readFully(signature)
+                looksLikeFont(signature)
+            }
+        }.getOrDefault(false)
+    }
+
     private fun extractFonts(
         resolver: CssResolver,
         epubArchive: ZipFile,
         imagesDir: File,
         out: MutableMap<String, BookFont>,
-        encryption: Map<String, String>,
-        keys: FontKeys,
+        encryption: Set<String>,
         budget: ArchiveResourceBudget,
         limits: ReaderResourceLimits,
     ) {
         for (face in resolver.fontFaces) {
             val entryPath = resolvePath(face.baseDir, face.src)
+            if (entryPath in encryption) continue
+            val sourcePath = face.src.substringBefore('?').substringBefore('#').lowercase(Locale.ROOT)
+            if (sourcePath.endsWith(".woff") || sourcePath.endsWith(".woff2")) continue
             val family = face.family.trim().lowercase()
             val key =
                 "${entryPath.length}:$entryPath${family.length}:$family:${face.bold}:${face.italic}"
@@ -1257,7 +1224,7 @@ object EpubParser {
             val target = File(imagesDir, fontFileName(entryPath))
 
 
-            if (target.length() in 1..limits.maxFontBytes) {
+            if (cachedFontHasValidSignature(target, limits.maxFontBytes)) {
                 out[key] = BookFont(
                     family = family,
                     path = target.absolutePath,
@@ -1269,45 +1236,12 @@ object EpubParser {
             if (target.exists() && !target.delete()) continue
 
             val entry = zipEntry(epubArchive, entryPath) ?: continue
-            var bytes = budget.readOptional(
+            val bytes = budget.readOptional(
                 entry,
                 limits.maxFontBytes,
                 "EPUB font $entryPath",
             ) ?: continue
 
-            when (encryption[entryPath]) {
-                null -> Unit
-
-                FontObfuscation.IDPF_ALGORITHM -> {
-                    val idpf = keys.idpf ?: continue
-                    bytes = FontObfuscation.deobfuscate(bytes, idpf, FontObfuscation.IDPF_PREFIX)
-                }
-
-                FontObfuscation.ADOBE_ALGORITHM -> {
-
-                    bytes = keys.adobe.asSequence()
-                        .map {
-                            FontObfuscation.deobfuscate(
-                                bytes,
-                                it,
-                                FontObfuscation.ADOBE_PREFIX
-                            )
-                        }
-                        .firstOrNull {
-                            looksLikeFont(it) || WoffDecoder.isWoff(it) || Woff2Decoder.isWoff2(it)
-                        }
-                        ?: continue
-                }
-
-                else -> continue
-            }
-
-            if (Woff2Decoder.isWoff2(bytes)) {
-                bytes = Woff2Decoder.decode(bytes, limits.maxFontBytes.toInt()) ?: continue
-            }
-            if (WoffDecoder.isWoff(bytes)) {
-                bytes = WoffDecoder.decode(bytes, limits.maxFontBytes.toInt()) ?: continue
-            }
             if (bytes.size.toLong() > limits.maxFontBytes) continue
             if (!looksLikeFont(bytes)) continue
             imagesDir.mkdirs()

@@ -7,6 +7,7 @@ import com.example.mobilereader.data.model.BlockAlign
 import com.example.mobilereader.data.model.BookFormat
 import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.parser.EpubParser
+import com.example.mobilereader.data.parser.resourceCacheFileName
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -253,71 +254,72 @@ class EpubParserTest {
     }
 
     @Test
-    fun `unpacks woff2 embedded fonts to raw sfnt`() {
-        val epub = tempFolder.newFile("woff2.epub")
-        val woff2 = Woff2TestFonts.buildWoff2(
-            Woff2TestFonts.minimalTtfTables().map { (tag, data) -> Woff2TestFonts.Spec(tag, data) },
-        )
-        ZipOutputStream(epub.outputStream()).use { zip ->
-            fun entry(name: String, content: ByteArray) {
-                zip.putNextEntry(ZipEntry(name))
-                zip.write(content)
-                zip.closeEntry()
+    fun `woff fonts are skipped while chapter text remains available`() {
+        for (extension in listOf("woff", "woff2")) {
+            val epub = tempFolder.newFile("$extension.epub")
+            val compressedFont = if (extension == "woff") "wOFF" else "wOF2"
+            ZipOutputStream(epub.outputStream()).use { zip ->
+                fun entry(name: String, content: ByteArray) {
+                    zip.putNextEntry(ZipEntry(name))
+                    zip.write(content)
+                    zip.closeEntry()
+                }
+                entry("mimetype", "application/epub+zip".toByteArray())
+                entry(
+                    "META-INF/container.xml",
+                    """
+                    <?xml version="1.0"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                      <rootfiles>
+                        <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+                      </rootfiles>
+                    </container>
+                    """.trimIndent().toByteArray(),
+                )
+                entry(
+                    "content.opf",
+                    """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" unique-identifier="id">
+                      <metadata><dc:title>Woff2 Book</dc:title></metadata>
+                      <manifest>
+                        <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+                        <item id="css" href="style.css" media-type="text/css"/>
+                        <item id="font" href="fonts/book.$extension" media-type="font/$extension"/>
+                      </manifest>
+                      <spine><itemref idref="ch1"/></spine>
+                    </package>
+                    """.trimIndent().toByteArray(),
+                )
+                entry(
+                    "ch1.xhtml",
+                    (
+                        "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head>" +
+                            "<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>" +
+                            "</head><body><p>Text in the book face.</p></body></html>"
+                        ).toByteArray(),
+                )
+                entry(
+                    "style.css",
+                    (
+                        "@font-face { font-family: BookFace; src: url(fonts/book.$extension); }\n" +
+                            "p { font-family: BookFace; }"
+                        ).toByteArray(),
+                )
+                entry("fonts/book.$extension", compressedFont.toByteArray() + ByteArray(128))
             }
-            entry("mimetype", "application/epub+zip".toByteArray())
-            entry(
-                "META-INF/container.xml",
-                """
-                <?xml version="1.0"?>
-                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
-                  <rootfiles>
-                    <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
-                  </rootfiles>
-                </container>
-                """.trimIndent().toByteArray(),
-            )
-            entry(
-                "content.opf",
-                """
-                <?xml version="1.0" encoding="utf-8"?>
-                <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="2.0" unique-identifier="id">
-                  <metadata><dc:title>Woff2 Book</dc:title></metadata>
-                  <manifest>
-                    <item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
-                    <item id="css" href="style.css" media-type="text/css"/>
-                    <item id="font" href="fonts/book.woff2" media-type="font/woff2"/>
-                  </manifest>
-                  <spine><itemref idref="ch1"/></spine>
-                </package>
-                """.trimIndent().toByteArray(),
-            )
-            entry(
-                "ch1.xhtml",
-                (
-                    "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head>" +
-                        "<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>" +
-                        "</head><body><p>Text in the book face.</p></body></html>"
-                    ).toByteArray(),
-            )
-            entry(
-                "style.css",
-                (
-                    "@font-face { font-family: BookFace; src: url(fonts/book.woff2); }\n" +
-                        "p { font-family: BookFace; }"
-                    ).toByteArray(),
-            )
-            entry("fonts/book.woff2", woff2)
+
+            val cacheDirectory = tempFolder.newFolder("$extension-cache")
+            val fontPath = "fonts/book.$extension"
+            val cacheName = resourceCacheFileName("font_v2", fontPath, fontPath)
+            val cachedFont = File(cacheDirectory, cacheName)
+            cachedFont.writeBytes("OTTO".toByteArray() + ByteArray(128))
+            val content = EpubParser.parseContent(epub, cacheDirectory)
+            assertTrue(content.fonts.isEmpty())
+            assertTrue(content.chapters.single().elements.filterIsInstance<ContentElement.Paragraph>()
+                .any { it.text.text.contains("Text in the book face.") })
+            assertTrue(cachedFont.isFile)
         }
-
-        val content = EpubParser.parseContent(epub, tempFolder.newFolder())
-        val font = content.fonts.single()
-        assertEquals("bookface", font.family)
-        val stored = File(font.path).readBytes()
-
-        assertEquals(0x00, stored[0].toInt())
-        assertEquals(0x01, stored[1].toInt())
-        assertEquals(0x00, stored[2].toInt())
-        assertEquals(0x00, stored[3].toInt())
     }
 
     @Test
@@ -541,14 +543,10 @@ class EpubParserTest {
     }
 
     @Test
-    fun `deobfuscates idpf-mangled embedded fonts`() {
+    fun `encrypted font is skipped while chapter text remains available`() {
         val uid = "urn:uuid:aaaabbbb-cccc-dddd-eeee-ffff00001111"
         val realFont = "OTTO".toByteArray() + ByteArray(1500) { (it % 100).toByte() }
-        val mangled = com.example.mobilereader.data.parser.FontObfuscation.deobfuscate(
-            realFont,
-            com.example.mobilereader.data.parser.FontObfuscation.idpfKey(uid),
-            com.example.mobilereader.data.parser.FontObfuscation.IDPF_PREFIX,
-        )
+        val mangled = ByteArray(realFont.size) { 42 }
 
         val epub = tempFolder.newFile("obfuscated.epub")
         ZipOutputStream(epub.outputStream()).use { zip ->
@@ -600,12 +598,17 @@ class EpubParserTest {
             entry("OPS/fonts/lit.otf", mangled)
         }
 
-        val content = EpubParser.parseContent(epub, tempFolder.newFolder())
-
-        val font = content.fonts.single()
-        assertEquals("lit", font.family)
-        val extracted = File(font.path).readBytes()
-        assertArrayEquals(realFont, extracted)
+        val cacheDirectory = tempFolder.newFolder("encrypted-cache")
+        val fontPath = "OPS/fonts/lit.otf"
+        val cacheName = resourceCacheFileName("font_v2", fontPath, fontPath)
+        val cachedFont = File(cacheDirectory, cacheName)
+        cachedFont.writeBytes(realFont)
+        val content = EpubParser.parseContent(epub, cacheDirectory)
+        assertTrue(content.fonts.isEmpty())
+        assertTrue(content.chapters.single().elements.filterIsInstance<ContentElement.Paragraph>()
+            .any { it.text.text.contains("Текст главы достаточной длины.") })
+        assertTrue(content.publisherPublication?.resources?.containsKey(fontPath) != true)
+        assertTrue(cachedFont.isFile)
     }
 
 }
