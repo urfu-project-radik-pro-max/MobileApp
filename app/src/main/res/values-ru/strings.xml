@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="reader_settings_tab_appearance">Вид и шрифт</string>
+    <string name="reader_settings_tab_appearance">Внешний вид</string>
     <string name="reader_settings_tab_text">Текст</string>
     <string name="reader_settings_tab_pages">Страницы</string>
     <string name="reader_settings_tab_device">Устройство</string>

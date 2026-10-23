@@ -9,7 +9,7 @@
     <string name="reader_collapse_section">Collapse section</string>
     <string name="reader_contents">Contents</string>
     <string name="reader_settings">Reading settings</string>
-    <string name="reader_settings_tab_appearance">Appearance &amp; font</string>
+    <string name="reader_settings_tab_appearance">Appearance</string>
     <string name="reader_settings_tab_text">Text</string>
     <string name="reader_settings_tab_pages">Pages</string>
     <string name="reader_settings_tab_device">Device</string>
