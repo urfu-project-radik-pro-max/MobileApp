@@ -160,6 +160,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.os.SystemClock
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -167,6 +168,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.example.mobilereader.MainActivity
+import com.example.mobilereader.VolumeKeyPhase
 import com.example.mobilereader.R
 import com.example.mobilereader.ui.theme.appColorSchemeFor
 import com.example.mobilereader.ui.theme.MobileReaderTheme
@@ -199,8 +201,6 @@ import com.example.mobilereader.ui.reader.selection.rememberReaderHighlights
 import com.example.mobilereader.ui.reader.selection.rememberTextFragment
 import com.example.mobilereader.ui.theme.isDark
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
@@ -493,17 +493,30 @@ private fun ReaderContent(
     }
 
 
-    val turnEvents = remember { MutableSharedFlow<Boolean>(extraBufferCapacity = 4) }
+    val turnController = remember(ready.book.id, settings.readingMode) {
+        VolumeTurnController(SystemClock::uptimeMillis)
+    }
     val mainActivity = activity as? MainActivity
-    DisposableEffect(mainActivity) {
-        val handler: (Boolean) -> Boolean = handler@{ forward ->
-            if (!viewModel.appSettings.value.volumeKeyPaging) return@handler false
-            if (searchVisible) return@handler false
-            if (linkedDocumentId != null) return@handler false
-            turnEvents.tryEmit(forward)
+    val currentSearchVisible by rememberUpdatedState(searchVisible)
+    val currentLinkedDocumentId by rememberUpdatedState(linkedDocumentId)
+    DisposableEffect(mainActivity, turnController) {
+        val handler: (Boolean, VolumeKeyPhase) -> Boolean = handler@{ forward, phase ->
+            when (phase) {
+                VolumeKeyPhase.PRESS -> {
+                    if (!viewModel.appSettings.value.volumeKeyPaging) return@handler false
+                    if (currentSearchVisible) return@handler false
+                    if (currentLinkedDocumentId != null) return@handler false
+                    turnController.press(forward)
+                }
+
+                VolumeKeyPhase.REPEAT -> turnController.repeat(forward)
+                VolumeKeyPhase.RELEASE -> turnController.release(forward)
+            }
+            true
         }
         mainActivity?.volumeKeyHandler = handler
         onDispose {
+            turnController.releaseAll()
             if (mainActivity?.volumeKeyHandler == handler) mainActivity.volumeKeyHandler = null
         }
     }
@@ -765,7 +778,7 @@ private fun ReaderContent(
                     searchHighlight = searchHighlight,
                     pinchHandlers = pinchHandlers,
                     brightnessHandlers = brightnessHandlers,
-                    turnEvents = turnEvents,
+                    turnController = turnController,
                     footnotes = footnotes,
                     quoteRanges = quoteRanges,
                     selection = selection,
@@ -793,7 +806,7 @@ private fun ReaderContent(
                     searchHighlight = searchHighlight,
                     pinchHandlers = pinchHandlers,
                     brightnessHandlers = brightnessHandlers,
-                    turnEvents = turnEvents,
+                    turnController = turnController,
                     footnotes = footnotes,
                     quoteRanges = quoteRanges,
                     selection = selection,
@@ -1679,7 +1692,7 @@ private fun ScrollReader(
     onToggleChrome: () -> Unit,
     pinchHandlers: PinchHandlers,
     brightnessHandlers: BrightnessHandlers,
-    turnEvents: SharedFlow<Boolean>,
+    turnController: VolumeTurnController,
     footnotes: FootnoteHandler?,
     quoteRanges: List<BookSelection>,
     searchHighlight: String?,
@@ -1835,10 +1848,11 @@ private fun ScrollReader(
         }
         onSeekPositionConsumed()
     }
-    LaunchedEffect(ready) {
-        turnEvents.collect { forward ->
+    LaunchedEffect(ready, turnController) {
+        turnController.collectTurns { forward ->
             val viewport = listState.layoutInfo.viewportSize.height * 0.88f
-            listState.animateScrollBy(if (forward) viewport else -viewport)
+            val distance = if (forward) viewport else -viewport
+            listState.animateScrollBy(distance)
         }
     }
     DisposableEffect(ready) {
@@ -1971,7 +1985,7 @@ private fun PagedReader(
     onToggleChrome: () -> Unit,
     pinchHandlers: PinchHandlers,
     brightnessHandlers: BrightnessHandlers,
-    turnEvents: SharedFlow<Boolean>,
+    turnController: VolumeTurnController,
     footnotes: FootnoteHandler?,
     quoteRanges: List<BookSelection>,
     searchHighlight: String?,
@@ -2207,8 +2221,8 @@ private fun PagedReader(
                 pagerState.scrollToPage(page)
                 onSeekPositionConsumed()
             }
-            LaunchedEffect(pagerState, settings.pageTurnAnimationEnabled) {
-                turnEvents.collect { forward ->
+            LaunchedEffect(pagerState, settings.pageTurnAnimationEnabled, turnController) {
+                turnController.collectTurns { forward ->
                     val delta = if (forward) 1 else -1
                     turnPage(
                         (pagerState.currentPage + delta)

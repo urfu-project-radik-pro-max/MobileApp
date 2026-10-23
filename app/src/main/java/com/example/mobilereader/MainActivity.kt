@@ -28,9 +28,21 @@ import com.example.mobilereader.ui.reader.ReaderScreen
 import com.example.mobilereader.ui.theme.MobileReaderTheme
 import kotlinx.coroutines.launch
 
+enum class VolumeKeyPhase {
+    PRESS,
+    REPEAT,
+    RELEASE,
+}
+
 class MainActivity : ComponentActivity() {
-    var volumeKeyHandler: ((forward: Boolean) -> Boolean)? = null
-    private var volumeKeyDownConsumed = false
+    var volumeKeyHandler: ((forward: Boolean, phase: VolumeKeyPhase) -> Boolean)? = null
+    private enum class VolumePressState {
+        CAPTURED,
+        PASSTHROUGH,
+    }
+
+    private var volumeUpPressState: VolumePressState? = null
+    private var volumeDownPressState: VolumePressState? = null
     private val readerApplication by lazy { application as MobileReaderApp }
     private var selectedBookId by mutableStateOf<String?>(null)
     private var loadingBook by mutableStateOf(false)
@@ -82,19 +94,59 @@ class MainActivity : ComponentActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-            val consumed = volumeKeyHandler?.invoke(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) == true
-            volumeKeyDownConsumed = consumed
-            if (consumed) return true
+            val forward = keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+            val pressState = if (forward) {
+                volumeDownPressState
+            } else {
+                volumeUpPressState
+            }
+            val isInitialDown = event == null || event.repeatCount == 0
+
+            if (isInitialDown) {
+                if (pressState == VolumePressState.CAPTURED) {
+                    volumeKeyHandler?.invoke(forward, VolumeKeyPhase.RELEASE)
+                }
+                val newPressState = if (
+                    volumeKeyHandler?.invoke(forward, VolumeKeyPhase.PRESS) == true
+                ) {
+                    VolumePressState.CAPTURED
+                } else {
+                    VolumePressState.PASSTHROUGH
+                }
+                if (forward) {
+                    volumeDownPressState = newPressState
+                } else {
+                    volumeUpPressState = newPressState
+                }
+                if (newPressState == VolumePressState.CAPTURED) {
+                    return true
+                }
+            } else if (pressState == VolumePressState.CAPTURED) {
+                volumeKeyHandler?.invoke(forward, VolumeKeyPhase.REPEAT)
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) &&
-            volumeKeyDownConsumed
-        ) {
-            volumeKeyDownConsumed = false
-            return true
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            val pressState = if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                val previousState = volumeDownPressState
+                volumeDownPressState = null
+                previousState
+            } else {
+                val previousState = volumeUpPressState
+                volumeUpPressState = null
+                previousState
+            }
+            if (pressState == VolumePressState.CAPTURED) {
+                volumeKeyHandler?.invoke(
+                    keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
+                    VolumeKeyPhase.RELEASE,
+                )
+                return true
+            }
         }
         return super.onKeyUp(keyCode, event)
     }
