@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -19,7 +20,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
@@ -1672,6 +1672,10 @@ internal fun AnnotatedString.withSearchHighlight(
 }
 
 
+private class ScrollTurnProgress(val distance: Float) {
+    var consumed = 0f
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ScrollReader(
@@ -1712,6 +1716,41 @@ private fun ScrollReader(
             0
         },
     )
+    val pageTurnAnimationEnabled = rememberUpdatedState(settings.pageTurnAnimationEnabled)
+    var activeScrollTurn by remember { mutableStateOf<ScrollTurnProgress?>(null) }
+
+    suspend fun turnBy(delta: Int) {
+        val distance = delta * listState.layoutInfo.viewportSize.height * 0.88f
+        if (!pageTurnAnimationEnabled.value) {
+            listState.scrollBy(distance)
+            return
+        }
+
+        val turn = ScrollTurnProgress(distance)
+        activeScrollTurn = turn
+        try {
+            listState.scroll {
+                animate(0f, distance) { value, _ ->
+                    val requestedStep = value - turn.consumed
+                    val consumedStep = scrollBy(requestedStep)
+                    turn.consumed += consumedStep
+                }
+            }
+        } finally {
+            if (activeScrollTurn === turn) {
+                activeScrollTurn = null
+            }
+        }
+    }
+
+    LaunchedEffect(settings.pageTurnAnimationEnabled) {
+        if (!settings.pageTurnAnimationEnabled) {
+            val turn = activeScrollTurn ?: return@LaunchedEffect
+            listState.scroll {
+                scrollBy(turn.distance - turn.consumed)
+            }
+        }
+    }
     val density = LocalDensity.current
     val stableInsets = WindowInsets.systemBarsIgnoringVisibility.asPaddingValues()
     val readingTopReferencePx = with(density) {
@@ -1850,9 +1889,8 @@ private fun ScrollReader(
     }
     LaunchedEffect(ready, turnController) {
         turnController.collectTurns { forward ->
-            val viewport = listState.layoutInfo.viewportSize.height * 0.88f
-            val distance = if (forward) viewport else -viewport
-            listState.animateScrollBy(distance)
+            val delta = if (forward) 1 else -1
+            turnBy(delta)
         }
     }
     DisposableEffect(ready) {
@@ -1901,9 +1939,7 @@ private fun ScrollReader(
                                 leftEdge = true,
                                 progression = ready.pageProgression,
                             )
-                            listState.animateScrollBy(
-                                delta * listState.layoutInfo.viewportSize.height * 0.88f,
-                            )
+                            turnBy(delta)
                         }
                     },
                     onTapRight = {
@@ -1912,9 +1948,7 @@ private fun ScrollReader(
                                 leftEdge = false,
                                 progression = ready.pageProgression,
                             )
-                            listState.animateScrollBy(
-                                delta * listState.layoutInfo.viewportSize.height * 0.88f,
-                            )
+                            turnBy(delta)
                         }
                     },
                     onTapCenter = onToggleChrome,
@@ -2093,12 +2127,19 @@ private fun PagedReader(
             val pagerState = rememberPagerState(initialPage = initialPage) {
                 realPageCount + extraPages
             }
+            val pageTurnAnimationEnabled = rememberUpdatedState(settings.pageTurnAnimationEnabled)
 
             suspend fun turnPage(targetPage: Int) {
-                if (settings.pageTurnAnimationEnabled) {
+                if (pageTurnAnimationEnabled.value) {
                     pagerState.animateScrollToPage(targetPage)
                 } else {
                     pagerState.scrollToPage(targetPage)
+                }
+            }
+
+            LaunchedEffect(settings.pageTurnAnimationEnabled, pagerState) {
+                if (!settings.pageTurnAnimationEnabled && pagerState.isScrollInProgress) {
+                    pagerState.scrollToPage(pagerState.targetPage)
                 }
             }
 
@@ -2221,7 +2262,7 @@ private fun PagedReader(
                 pagerState.scrollToPage(page)
                 onSeekPositionConsumed()
             }
-            LaunchedEffect(pagerState, settings.pageTurnAnimationEnabled, turnController) {
+            LaunchedEffect(pagerState, turnController) {
                 turnController.collectTurns { forward ->
                     val delta = if (forward) 1 else -1
                     turnPage(
@@ -2232,7 +2273,7 @@ private fun PagedReader(
             }
 
 
-            DisposableEffect(selection, pagerState, realPageCount, settings.pageTurnAnimationEnabled) {
+            DisposableEffect(selection, pagerState, realPageCount) {
                 val mine = SelectionAutoAdvance(
                     paged = true,
                     step = { direction, _ ->
@@ -2260,7 +2301,6 @@ private fun PagedReader(
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 1,
-                // TODO: Add distinct page-turn effects when their rendering is implemented.
                 flingBehavior = if (settings.pageTurnAnimationEnabled) {
                     PagerDefaults.flingBehavior(state = pagerState)
                 } else {
