@@ -6,6 +6,9 @@
     <string name="reader_settings_tab_device">Устройство</string>
     <string name="reader_settings_tab_translation">Перевод</string>
     <string name="reader_section_page_mode_settings">Настройки постраничного режима</string>
+    <string name="reader_section_gestures">Жесты</string>
+    <string name="reader_edge_tap_paging">Перелистывание касанием краёв</string>
+    <string name="reader_brightness_gesture">Яркость жестом у левого края</string>
     <string name="selection_translate">Перевести</string>
     <string name="contextual_translation_title">Контекстный перевод</string>
     <string name="contextual_translation_page_count_description">Страницы контекста: текущая и предыдущие. В режиме прокрутки используется сопоставимый объём текста.</string>

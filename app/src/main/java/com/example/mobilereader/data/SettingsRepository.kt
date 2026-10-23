@@ -2,6 +2,7 @@ package com.example.mobilereader.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -63,6 +64,8 @@ data class ReaderSettings(
     val dropCaps: Boolean = false,
 
     val pageTurnAnimationEnabled: Boolean = true,
+    val edgeTapPagingEnabled: Boolean = true,
+    val brightnessGestureEnabled: Boolean = true,
 
     @kotlinx.serialization.Transient
     val centerHeadings: Boolean = false,
@@ -93,6 +96,24 @@ data class TranslationSettings(
 
 
 private val Context.settingsDataStore by preferencesDataStore(name = "reader_settings")
+
+internal object ReaderGestureSettingsStore {
+    private val edgeTapPagingEnabled = booleanPreferencesKey("edge_tap_paging_enabled")
+    private val brightnessGestureEnabled = booleanPreferencesKey("brightness_gesture_enabled")
+
+    fun readEdgeTapPagingEnabled(preferences: Preferences): Boolean {
+        return preferences[edgeTapPagingEnabled] ?: true
+    }
+
+    fun readBrightnessGestureEnabled(preferences: Preferences): Boolean {
+        return preferences[brightnessGestureEnabled] ?: true
+    }
+
+    fun write(preferences: MutablePreferences, settings: ReaderSettings) {
+        preferences[edgeTapPagingEnabled] = settings.edgeTapPagingEnabled
+        preferences[brightnessGestureEnabled] = settings.brightnessGestureEnabled
+    }
+}
 
 class SettingsRepository(private val context: Context) {
 
@@ -200,6 +221,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.invertImages] = updated.invertImages
             prefs[Keys.dropCaps] = updated.dropCaps
             prefs[Keys.pageTurnAnimationEnabled] = updated.pageTurnAnimationEnabled
+            ReaderGestureSettingsStore.write(prefs, updated)
         }
     }
 
@@ -239,6 +261,8 @@ class SettingsRepository(private val context: Context) {
             dropCaps = this[Keys.dropCaps] ?: defaults.dropCaps,
             pageTurnAnimationEnabled = this[Keys.pageTurnAnimationEnabled]
                 ?: defaults.pageTurnAnimationEnabled,
+            edgeTapPagingEnabled = ReaderGestureSettingsStore.readEdgeTapPagingEnabled(this),
+            brightnessGestureEnabled = ReaderGestureSettingsStore.readBrightnessGestureEnabled(this),
         )
     }
 

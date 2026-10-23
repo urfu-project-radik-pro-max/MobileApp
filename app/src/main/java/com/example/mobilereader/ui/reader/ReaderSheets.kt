@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.Superscript
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ColorScheme
@@ -1228,6 +1229,34 @@ private fun ReaderSettingsCategoryContent(
                         colors = colors,
                         checked = settings.showChapterPagesLeft,
                         onCheckedChange = { onUpdate { s -> s.copy(showChapterPagesLeft = it) } },
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+                PanelSectionLabel(stringResource(R.string.reader_section_gestures), colors)
+                SettingsGroup(colors) {
+                    SettingToggleRow(
+                        icon = Icons.Rounded.TouchApp,
+                        title = stringResource(R.string.reader_edge_tap_paging),
+                        colors = colors,
+                        checked = settings.edgeTapPagingEnabled,
+                        onCheckedChange = { enabled ->
+                            onUpdate { current ->
+                                current.copy(edgeTapPagingEnabled = enabled)
+                            }
+                        },
+                    )
+                    PanelDivider(colors)
+                    SettingToggleRow(
+                        icon = Icons.Rounded.WbSunny,
+                        title = stringResource(R.string.reader_brightness_gesture),
+                        colors = colors,
+                        checked = settings.brightnessGestureEnabled,
+                        onCheckedChange = { enabled ->
+                            onUpdate { current ->
+                                current.copy(brightnessGestureEnabled = enabled)
+                            }
+                        },
                     )
                 }
 

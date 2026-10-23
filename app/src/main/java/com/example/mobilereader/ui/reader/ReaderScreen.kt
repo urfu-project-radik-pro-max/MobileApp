@@ -22,7 +22,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -365,9 +364,6 @@ private fun ReaderContent(
     val panelFraction = remember { mutableFloatStateOf(0f) }
 
 
-    var liveFontSize by remember(settings.fontSizeSp) { mutableFloatStateOf(settings.fontSizeSp) }
-
-
     val displayedIndex = remember { mutableIntStateOf(viewModel.currentFlatIndex) }
     var seekTarget by remember { mutableStateOf<Int?>(null) }
     var seekFraction by remember { mutableStateOf<Float?>(null) }
@@ -435,19 +431,14 @@ private fun ReaderContent(
         }
     }
 
-    val pinchHandlers = PinchHandlers(
-        onPinch = { zoom -> liveFontSize = (liveFontSize * zoom).coerceIn(12f, 32f) },
-        onPinchEnd = {
-            haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
-            val committed = liveFontSize.roundToInt().toFloat()
-            viewModel.updateSettings { it.copy(fontSizeSp = committed) }
-        },
-    )
-
-
     val activity = LocalActivity.current
     var brightness by remember { mutableStateOf<Float?>(null) }
     var brightnessVisibleUntil by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(settings.brightnessGestureEnabled) {
+        if (!settings.brightnessGestureEnabled) {
+            brightnessVisibleUntil = 0L
+        }
+    }
 
     val setBrightness: (Float?) -> Unit = { value ->
         activity?.window?.let { window ->
@@ -458,10 +449,11 @@ private fun ReaderContent(
             }
         }
     }
+    val currentBrightness = rememberUpdatedState(brightness)
     val brightnessHandlers = remember(activity) {
         BrightnessHandlers { delta ->
             val window = activity?.window ?: return@BrightnessHandlers
-            val current = brightness
+            val current = currentBrightness.value
                 ?: window.attributes.screenBrightness.takeIf { it >= 0f }
                 ?: 0.5f
 
@@ -761,7 +753,7 @@ private fun ReaderContent(
                     ready = ready,
                     settings = settings,
                     appSettings = appSettings,
-                    fontSize = liveFontSize,
+                    fontSize = settings.fontSizeSp,
                     colors = colors,
                     viewModel = viewModel,
                     displayedIndex = displayedIndex,
@@ -777,7 +769,6 @@ private fun ReaderContent(
                         searchHighlight = null
                     },
                     searchHighlight = searchHighlight,
-                    pinchHandlers = pinchHandlers,
                     brightnessHandlers = brightnessHandlers,
                     turnController = turnController,
                     footnotes = footnotes,
@@ -805,7 +796,6 @@ private fun ReaderContent(
                         searchHighlight = null
                     },
                     searchHighlight = searchHighlight,
-                    pinchHandlers = pinchHandlers,
                     brightnessHandlers = brightnessHandlers,
                     turnController = turnController,
                     footnotes = footnotes,
@@ -856,12 +846,14 @@ private fun ReaderContent(
             },
         )
 
-        BrightnessOverlay(
-            brightness = brightness,
-            visibleUntil = brightnessVisibleUntil,
-            colors = colors,
-            modifier = Modifier.align(Alignment.CenterStart),
-        )
+        if (settings.brightnessGestureEnabled) {
+            BrightnessOverlay(
+                brightness = brightness,
+                visibleUntil = brightnessVisibleUntil,
+                colors = colors,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+        }
 
         val bookmarked = liveBook?.bookmarks?.any {
             it.flatIndex in displayedIndex.intValue..(displayedIndex.intValue + viewModel.bookmarkWindow)
@@ -1149,7 +1141,7 @@ private fun ReaderContent(
                     onSeekConsumed = { linkedDocumentSeek = null },
                     settings = settings,
                     appSettings = appSettings,
-                    fontSize = liveFontSize,
+                    fontSize = settings.fontSizeSp,
                     colors = colors,
                     bookFonts = ready.bookFonts,
                     language = ready.language,
@@ -1188,7 +1180,7 @@ private fun ReaderContent(
             initialScrollOffset = note.scrollOffset,
             settings = settings,
             appSettings = appSettings,
-            fontSize = liveFontSize,
+            fontSize = settings.fontSizeSp,
             colors = colors,
             bookFonts = ready.bookFonts,
             language = ready.language,
@@ -1695,7 +1687,6 @@ private fun ScrollReader(
     seekPosition: ReaderReturnLocation.Main?,
     onSeekPositionConsumed: () -> Unit,
     onToggleChrome: () -> Unit,
-    pinchHandlers: PinchHandlers,
     brightnessHandlers: BrightnessHandlers,
     turnController: VolumeTurnController,
     footnotes: FootnoteHandler?,
@@ -1953,7 +1944,8 @@ private fun ScrollReader(
                         }
                     },
                     onTapCenter = onToggleChrome,
-                    pinchHandlers = pinchHandlers,
+                    edgeTapPagingEnabled = settings.edgeTapPagingEnabled,
+                    brightnessGestureEnabled = settings.brightnessGestureEnabled,
                     brightnessHandlers = brightnessHandlers,
                 ),
             contentPadding = PaddingValues(
@@ -2025,7 +2017,6 @@ private fun PagedReader(
     seekPosition: ReaderReturnLocation.Main?,
     onSeekPositionConsumed: () -> Unit,
     onToggleChrome: () -> Unit,
-    pinchHandlers: PinchHandlers,
     brightnessHandlers: BrightnessHandlers,
     turnController: VolumeTurnController,
     footnotes: FootnoteHandler?,
@@ -2346,7 +2337,8 @@ private fun PagedReader(
                             }
                         },
                         onTapCenter = onToggleChrome,
-                        pinchHandlers = pinchHandlers,
+                        edgeTapPagingEnabled = settings.edgeTapPagingEnabled,
+                        brightnessGestureEnabled = settings.brightnessGestureEnabled,
                         brightnessHandlers = brightnessHandlers,
                     ),
             ) { pageIndex ->
@@ -2482,90 +2474,119 @@ private fun PageView(
 }
 
 
-class PinchHandlers(
-    val onPinch: (Float) -> Unit,
-    val onPinchEnd: () -> Unit,
-)
-
 class BrightnessHandlers(
-
     val onDelta: (Float) -> Unit,
 )
 
-
+@Composable
 private fun Modifier.readerGestures(
     onTapLeft: () -> Unit,
     onTapRight: () -> Unit,
     onTapCenter: () -> Unit,
-    pinchHandlers: PinchHandlers,
+    edgeTapPagingEnabled: Boolean,
+    brightnessGestureEnabled: Boolean,
     brightnessHandlers: BrightnessHandlers,
-): Modifier = this
-    .pointerInput(Unit) {
-        detectTapGestures { offset ->
-            val width = size.width.toFloat()
-            when {
-                offset.x < width * 0.22f -> onTapLeft()
-                offset.x > width * 0.78f -> onTapRight()
-                else -> onTapCenter()
-            }
-        }
-    }
-    .pointerInput(pinchHandlers) {
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false)
-            var zoomed = false
-            while (true) {
-                val event = awaitPointerEvent()
-                if (event.changes.count { it.pressed } >= 2) {
-                    val zoom = event.calculateZoom()
-                    if (zoom != 1f) {
-                        pinchHandlers.onPinch(zoom)
-                        zoomed = true
-                        event.changes.forEach { it.consume() }
-                    }
-                }
-                if (event.changes.none { it.pressed }) break
-            }
-            if (zoomed) pinchHandlers.onPinchEnd()
-        }
-    }
-    .pointerInput(brightnessHandlers) {
+): Modifier {
+    val currentOnTapLeft = rememberUpdatedState(onTapLeft)
+    val currentOnTapRight = rememberUpdatedState(onTapRight)
+    val currentOnTapCenter = rememberUpdatedState(onTapCenter)
 
+    val tapModifier = Modifier.pointerInput(edgeTapPagingEnabled) {
         awaitEachGesture {
             val down = awaitFirstDown(
                 requireUnconsumed = false,
-                pass = PointerEventPass.Initial,
+                pass = PointerEventPass.Final,
             )
-            if (down.position.x > size.width * 0.12f) return@awaitEachGesture
-
-            val slop = viewConfiguration.touchSlop
-            var dragging = false
+            val tap = ReaderTapGesture(
+                startX = down.position.x,
+                startY = down.position.y,
+                touchSlop = viewConfiguration.touchSlop,
+            )
+            tap.observe(1, down.position.x, down.position.y, down.isConsumed)
+            var releasedX = down.position.x
             while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) break
-                if (event.changes.count { it.pressed } > 1) break
-
-
-                if (change.isConsumed) break
-
-                val totalDx = change.position.x - down.position.x
-                val totalDy = change.position.y - down.position.y
-                if (!dragging) {
-                    if (abs(totalDy) > slop && abs(totalDy) > abs(totalDx) * 1.5f) {
-                        dragging = true
-                    } else if (abs(totalDx) > slop) {
-                        break
-                    }
+                val event = awaitPointerEvent(PointerEventPass.Final)
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null) {
+                    tap.cancel()
+                } else {
+                    releasedX = change.position.x
+                    tap.observe(
+                        pointerCount = event.changes.size,
+                        x = change.position.x,
+                        y = change.position.y,
+                        consumed = change.isConsumed,
+                    )
                 }
-                if (dragging) {
-                    val dy = change.position.y - change.previousPosition.y
-                    brightnessHandlers.onDelta(-dy / (size.height * 0.7f))
-                    change.consume()
+                if (event.changes.none { it.pressed }) {
+                    break
+                }
+            }
+            if (tap.canTap) {
+                when (readerTapTarget(releasedX, size.width.toFloat(), edgeTapPagingEnabled)) {
+                    ReaderTapTarget.LEFT -> currentOnTapLeft.value()
+                    ReaderTapTarget.RIGHT -> currentOnTapRight.value()
+                    ReaderTapTarget.CENTER -> currentOnTapCenter.value()
+                    ReaderTapTarget.NONE -> Unit
                 }
             }
         }
     }
+
+    val brightnessModifier = if (brightnessGestureEnabled) {
+        Modifier.pointerInput(brightnessHandlers) {
+            awaitEachGesture {
+                val down = awaitFirstDown(
+                    requireUnconsumed = false,
+                    pass = PointerEventPass.Initial,
+                )
+                if (!canStartBrightnessGesture(
+                        down.position.x,
+                        size.width.toFloat(),
+                        brightnessGestureEnabled,
+                    )
+                ) {
+                    return@awaitEachGesture
+                }
+
+                val slop = viewConfiguration.touchSlop
+                var dragging = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        break
+                    }
+                    if (event.changes.size > 1) {
+                        break
+                    }
+                    if (change.isConsumed) {
+                        break
+                    }
+
+                    val totalDx = change.position.x - down.position.x
+                    val totalDy = change.position.y - down.position.y
+                    if (!dragging) {
+                        if (abs(totalDy) > slop && abs(totalDy) > abs(totalDx) * 1.5f) {
+                            dragging = true
+                        } else if (abs(totalDx) > slop) {
+                            break
+                        }
+                    }
+                    if (dragging) {
+                        val dy = change.position.y - change.previousPosition.y
+                        brightnessHandlers.onDelta(-dy / (size.height * 0.7f))
+                        change.consume()
+                    }
+                }
+            }
+        }
+    } else {
+        Modifier
+    }
+
+    return this.then(tapModifier).then(brightnessModifier)
+}
 
 
 @Composable

@@ -74,6 +74,9 @@
     <string name="reader_font_size_pt">%1$d pt</string>
     <string name="reader_section_page_anim">Page-turn animation</string>
     <string name="reader_section_page_mode_settings">Page mode settings</string>
+    <string name="reader_section_gestures">Gestures</string>
+    <string name="reader_edge_tap_paging">Turn pages by tapping the edges</string>
+    <string name="reader_brightness_gesture">Adjust brightness from the left edge</string>
     <string name="reader_font_custom">Custom</string>
     <string name="reader_fonts_title">Custom fonts</string>
     <string name="reader_font_add">Add font</string>
