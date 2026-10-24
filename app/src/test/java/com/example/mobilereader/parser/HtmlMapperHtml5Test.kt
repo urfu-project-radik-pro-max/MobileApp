@@ -76,7 +76,7 @@ class HtmlMapperHtml5Test {
     }
 
     @Test
-    fun `leading floated text span becomes one exact toggleable drop cap`() {
+    fun `leading styled text remains in the paragraph exactly once`() {
         val paragraph = paragraphs(
             mapped(
                 """
@@ -98,23 +98,11 @@ class HtmlMapperHtml5Test {
         assertEquals(1, paragraph.text.text.count { it == 'K' })
 
 
-        assertTrue(paragraph.text.spanStyles.none { it.start == 0 && it.end > 0 })
 
-        val cap = requireNotNull(paragraph.block?.firstLetter)
-        assertEquals(3.4f, cap.scale, 0.001f)
-        assertEquals(true, cap.bold)
-        assertEquals(true, cap.italic)
-        assertEquals("serif", cap.fontFamily)
-        assertEquals(0xff663399.toInt(), cap.foregroundColorArgb)
-        assertEquals(0x88ffff00.toInt(), cap.backgroundColorArgb)
-        assertEquals(false, cap.leftSide)
-        assertEquals(BookTextDirection.LTR, cap.direction)
-        assertEquals("en", cap.language)
-        assertEquals(1, cap.sourceTextLength)
     }
 
     @Test
-    fun `later or long floated text is not misclassified as a drop cap`() {
+    fun `later styled text remains in its paragraph`() {
         val result = paragraphs(
             mapped(
                 "<p>Before <span class='cap'>K</span> after.</p>" +
@@ -123,7 +111,7 @@ class HtmlMapperHtml5Test {
             ),
         )
 
-        assertTrue(result.all { it.block?.firstLetter == null })
+        assertEquals(listOf("Before K after.", "Long rest."), result.map { it.text.text })
     }
 
     @Test
@@ -360,6 +348,58 @@ class HtmlMapperHtml5Test {
             "/x/plate.png",
             elements.filterIsInstance<ContentElement.Image>().single().path,
         )
+    }
+
+    @Test
+    fun `block images retain css percentage em and html dimensions`() {
+        val elements = mapped(
+            "<div><img class='quarter' src='quarter.png'/></div>" +
+                "<div><img class='small' src='small.png'/></div>" +
+                "<div><img src='html.png' width='120' height='48'/></div>" +
+                "<div><img src='natural.png'/></div>",
+            css = ".quarter { width: 25%; } .small { width: 4em; }",
+            resolveImage = { "/images/$it" },
+        ).filterIsInstance<ContentElement.Image>()
+
+        assertEquals(4, elements.size)
+        assertEquals(0.25f, requireNotNull(elements[0].widthFrac), 0.001f)
+        assertEquals(4f, requireNotNull(elements[1].widthEm), 0.001f)
+        assertEquals(7.5f, requireNotNull(elements[2].widthEm), 0.001f)
+        assertEquals(3f, requireNotNull(elements[2].heightEm), 0.001f)
+        assertEquals(null, elements[3].widthFrac)
+        assertEquals(null, elements[3].widthEm)
+        assertEquals(null, elements[3].heightEm)
+    }
+
+    @Test
+    fun `small inline image stays between text fragments`() {
+        val elements = mapped(
+            "<p>Before<img class='small' src='icon.png'/>After</p>",
+            css = ".small { width: 1em; }",
+            resolveImage = { "/images/$it" },
+        )
+        val paragraph = elements.filterIsInstance<ContentElement.Paragraph>().single()
+        assertEquals("Before${INLINE_IMAGE_CHAR}After", paragraph.text.text)
+        assertEquals(0, elements.filterIsInstance<ContentElement.Image>().size)
+        assertEquals("/images/icon.png", paragraph.text
+            .getStringAnnotations(INLINE_IMAGE_TAG, 0, paragraph.text.length).single().item)
+    }
+
+    @Test
+    fun `semantic subheadings and enlarged paragraph keep their styles`() {
+        val elements = mapped(
+            "<h2>Second level</h2><h3>Third level</h3>" +
+                "<p class='large'>Large paragraph.</p><p>Ordinary paragraph.</p>",
+            css = ".large { font-size: 1.5em; text-align: right; }",
+        )
+        val headings = elements.filterIsInstance<ContentElement.Heading>()
+        assertEquals(listOf(2, 3), headings.map { it.level })
+        assertEquals(1.32f, requireNotNull(headings[0].block?.fontScale), 0.001f)
+        assertEquals(1.18f, requireNotNull(headings[1].block?.fontScale), 0.001f)
+        val paragraphs = elements.filterIsInstance<ContentElement.Paragraph>()
+        assertEquals(1.5f, requireNotNull(paragraphs[0].block?.fontScale), 0.001f)
+        assertEquals(BlockAlign.RIGHT, paragraphs[0].block?.align)
+        assertEquals(null, paragraphs[1].block?.fontScale)
     }
 
     @Test

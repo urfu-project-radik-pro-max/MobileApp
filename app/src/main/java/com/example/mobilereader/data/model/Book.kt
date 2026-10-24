@@ -7,6 +7,14 @@ enum class BookFormat {
     EPUB, FB2, MOBI, TXT, MD
 }
 
+@Serializable
+data class BookTextPosition(
+    val chapterIndex: Int,
+    val elementIndex: Int,
+    val charOffset: Int,
+    val elementFingerprint: String,
+)
+
 
 @Serializable
 data class ReadingProgress(
@@ -19,6 +27,7 @@ data class ReadingProgress(
     val pagesLeftInChapter: Int = -1,
 
     val totalPages: Int = 0,
+    val textPosition: BookTextPosition? = null,
 )
 
 
@@ -38,6 +47,7 @@ data class Bookmark(
 
 
     val orphaned: Boolean = false,
+    val textPosition: BookTextPosition? = null,
 
     val bookId: String = "",
     override val updatedAtMillis: Long = 0L,
@@ -58,6 +68,8 @@ data class Quote(
     val startChar: Int = -1,
     val endItem: Int = -1,
     val endChar: Int = -1,
+    val startPosition: BookTextPosition? = null,
+    val endPosition: BookTextPosition? = null,
 
     val note: String? = null,
 

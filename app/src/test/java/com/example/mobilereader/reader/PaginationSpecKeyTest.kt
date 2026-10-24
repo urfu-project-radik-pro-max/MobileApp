@@ -12,6 +12,19 @@ import org.junit.rules.TemporaryFolder
 class PaginationSpecKeyTest {
 
     @Test
+    fun `reader font size changes the page format`() {
+        fun spec(fontSize: Float) = PaginationSpec(
+            contentWidthPx = 800,
+            contentHeightPx = 1_200,
+            density = Density(2f),
+            settings = ReaderSettings(),
+            fontSize = fontSize,
+        )
+
+        assertNotEquals(spec(18f).key, spec(24f).key)
+    }
+
+    @Test
     fun `app heading preference invalidates cached pagination`() {
         fun key(centered: Boolean) = PaginationSpec(
             contentWidthPx = 800, contentHeightPx = 1_200,

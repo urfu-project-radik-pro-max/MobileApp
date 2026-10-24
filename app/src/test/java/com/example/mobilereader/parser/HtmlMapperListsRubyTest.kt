@@ -52,16 +52,13 @@ class HtmlMapperListsRubyTest {
     }
 
     @Test
-    fun `nested lists cycle bullets and indent by depth`() {
+    fun `nested lists cycle bullets by depth`() {
         val elements = mapped(
             "<ul><li>outer</li><li>x<ul><li>inner</li></ul></li></ul>",
         )
         val paragraphs = elements.filterIsInstance<ContentElement.Paragraph>()
         assertEquals("• outer", paragraphs[0].text.text)
-        val inner = paragraphs.single { it.text.text == "◦ inner" }
-        assertEquals(1.2f, inner.block!!.indentStartEm, 0.01f)
-        assertEquals(false, inner.block!!.firstLineIndent)
-        assertEquals(0f, paragraphs[0].block!!.indentStartEm, 0.01f)
+        assertTrue(paragraphs.any { it.text.text == "◦ inner" })
     }
 
     @Test
@@ -73,7 +70,7 @@ class HtmlMapperListsRubyTest {
     }
 
     @Test
-    fun `floated image travels with its paragraph instead of a block element`() {
+    fun `styled image remains inline with its paragraph`() {
         val mapper = HtmlMapper(
             resolveImage = { src -> "/resolved/$src" },
             css = CssResolver(
@@ -88,23 +85,18 @@ class HtmlMapperListsRubyTest {
             ).body(),
         )
 
-        val floated = elements.filterIsInstance<ContentElement.Paragraph>()
-            .first { it.text.text.startsWith("Текст") }
-        val float = floated.block!!.floatImage!!
-        assertEquals("/resolved/pic.png", float.path)
-        assertEquals(0.30f, float.widthFrac, 0.001f)
-        assertTrue(float.left)
-        assertEquals("Small portrait", float.altText)
+        val paragraphs = elements.filterIsInstance<ContentElement.Paragraph>()
+        assertEquals(2, paragraphs.size)
+        assertEquals("Текст, который обтекает картинку слева.",
+            paragraphs[0].text.text.replace("\uFFFC", ""))
+        val imagePaths = paragraphs.flatMap { paragraph ->
+            paragraph.text.getStringAnnotations(
+                INLINE_IMAGE_TAG, 0, paragraph.text.length,
+            ).map { it.item }
+        }
+        assertEquals(listOf("/resolved/pic.png", "/resolved/big.png"), imagePaths)
+        assertTrue(elements.none { it is ContentElement.Image })
 
-
-        val images = elements.filterIsInstance<ContentElement.Image>().map { it.path }
-        assertTrue(images.isEmpty())
-        val plain = elements.filterIsInstance<ContentElement.Paragraph>()
-            .first { it.text.text.contains("Обычная картинка") }
-        val annotation = plain.text
-            .getStringAnnotations(INLINE_IMAGE_TAG, 0, plain.text.length)
-            .single()
-        assertEquals("/resolved/big.png", annotation.item)
     }
 
     @Test

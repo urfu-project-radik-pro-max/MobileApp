@@ -199,42 +199,6 @@ class CssResolverTest {
     }
 
     @Test
-    fun `first-letter rules are captured separately and do not leak`() {
-        val r = resolver(
-            """
-            p.opener::first-letter { font-size: 3em; float: left; font-weight: bold;
-                color: rebeccapurple; background-color: #ff08; }
-            p.legacy:first-letter { font-size: 2em; float: right; direction: rtl; }
-            """.trimIndent(),
-        )
-        val d = doc("<p id='a' class='opener'>Мы</p><p id='b' class='legacy'>Он</p><p id='c'>x</p>")
-
-
-        assertEquals(1f, r.computed(d.selectFirst("#a")!!).fontSizeEm, 0.01f)
-        assertNull(r.computed(d.selectFirst("#a")!!).bold)
-
-        val cap = r.firstLetter(d.selectFirst("#a")!!)
-        assertNotNull(cap)
-        assertEquals(3f, cap!!.scale, 0.01f)
-        assertTrue(cap.isDropCap)
-        assertEquals(true, cap.bold)
-        assertEquals(0xff663399.toInt(), cap.foregroundColorArgb)
-        assertEquals(0x88ffff00.toInt(), cap.backgroundColorArgb)
-
-        val legacy = r.firstLetter(d.selectFirst("#b")!!)
-        assertNotNull(legacy)
-        assertEquals(2f, legacy!!.scale, 0.01f)
-        assertTrue(legacy.isDropCap)
-        assertEquals(false, legacy.leftSide)
-        assertEquals(
-            com.example.mobilereader.data.model.BookTextDirection.RTL,
-            legacy.direction,
-        )
-
-        assertNull(r.firstLetter(d.selectFirst("#c")!!))
-    }
-
-    @Test
     fun `unsupported pseudo drops only its comma-group member`() {
 
         val r = resolver("a:hover, p.note, li:nth-last-child(1) { font-style: italic; }")
@@ -251,29 +215,6 @@ class CssResolverTest {
 
         assertEquals("upper-roman", r.computed(d.selectFirst("#a")!!).listStyleType)
         assertEquals("square", r.computed(d.selectFirst("#b")!!).listStyleType)
-    }
-
-    @Test
-    fun `page break before is detected`() {
-        val r = resolver(".chapter { page-break-before: always; } .part { break-before: page; }")
-        val d = doc("<div class='chapter' id='a'>x</div><div class='part' id='b'>y</div><div id='c'>z</div>")
-
-        assertTrue(r.computed(d.selectFirst("#a")!!).pageBreakBefore)
-        assertTrue(r.computed(d.selectFirst("#b")!!).pageBreakBefore)
-        assertFalse(r.computed(d.selectFirst("#c")!!).pageBreakBefore)
-    }
-
-    @Test
-    fun `float and width are consumed`() {
-        val r = resolver("img.small { float: left; width: 30%; } img.em { width: 8em; }")
-        val d = doc("<img id='a' class='small'/><img id='b' class='em'/>")
-
-        val a = r.computed(d.selectFirst("#a")!!)
-        assertEquals("left", a.floatSide)
-        assertEquals(0.30f, a.widthFrac!!, 0.001f)
-        val b = r.computed(d.selectFirst("#b")!!)
-        assertNull(b.floatSide)
-        assertEquals(8f, b.widthEm!!, 0.001f)
     }
 
     @Test

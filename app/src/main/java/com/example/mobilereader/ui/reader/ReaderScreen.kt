@@ -1342,11 +1342,6 @@ private fun NoteSheet(
 
 
         key(noteKey) {
-            val notePlan = remember(note) {
-                planPublisherChapter(note.elements, note.publisherBoxes)
-            }
-
-
             val initialIndex = noteInitialLazyIndex(initialItem, note.elements.size)
             val listState = rememberLazyListState(
                 initialFirstVisibleItemIndex = initialIndex,
@@ -1385,10 +1380,6 @@ private fun NoteSheet(
                         )
                     }
                     items(note.elements.size, key = { it }) { index ->
-                        if (index in notePlan.suppressedElements && settings.bookStyles) {
-                            return@items
-                        }
-                        val plannedFloat = notePlan.floatByTarget[index]
                         RenderPart(
                             element = note.elements[index],
                             textOverride = null,
@@ -1402,20 +1393,6 @@ private fun NoteSheet(
                             bookFonts = bookFonts,
                             language = language,
                             footnotes = footnotes,
-                            publisherBoxes = notePlan.boxesByElement[index],
-                            publisherFloat = plannedFloat?.let { float ->
-                                ReaderPublisherFloat(
-                                    side = float.side,
-                                    style = float.style,
-                                    contents = float.contents.map { content ->
-                                        ReaderPublisherFloatContent(
-                                            sourceItemIndex = content.sourceElementIndex,
-                                            element = content.element,
-                                            publisherBoxes = content.publisherBoxes,
-                                        )
-                                    },
-                                )
-                            },
                         )
                     }
                 }
@@ -1458,7 +1435,7 @@ private fun LinkedDocumentOverlay(
     val initialIndex = if (document.items.isEmpty()) {
         0
     } else {
-        resolvePublisherFloatTarget(document.items, initialItem)
+        initialItem.coerceIn(0, document.items.lastIndex)
     }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialIndex,
@@ -1468,7 +1445,7 @@ private fun LinkedDocumentOverlay(
         val target = seek
         if (target != null && target.documentId == document.id && document.items.isNotEmpty()) {
             listState.scrollToItem(
-                resolvePublisherFloatTarget(document.items, target.itemIndex),
+                target.itemIndex.coerceIn(0, document.items.lastIndex),
                 target.scrollOffset.coerceAtLeast(0),
             )
             onSeekConsumed()
@@ -1498,9 +1475,6 @@ private fun LinkedDocumentOverlay(
         ) {
             items(document.items.size, key = { it }) { index ->
                 val readerItem = document.items[index]
-                if (readerItem.suppressedByPublisherFloat && settings.bookStyles) {
-                    return@items
-                }
                 RenderPart(
                     element = readerItem.element,
                     textOverride = null,
@@ -1514,8 +1488,6 @@ private fun LinkedDocumentOverlay(
                     bookFonts = bookFonts,
                     language = language,
                     footnotes = footnotes,
-                    publisherBoxes = readerItem.publisherBoxes,
-                    publisherFloat = readerItem.publisherFloat,
                 )
             }
         }
@@ -1697,7 +1669,7 @@ private fun ScrollReader(
     val scope = rememberCoroutineScope()
     val liveBook by viewModel.book.collectAsStateWithLifecycle()
     val rawInitialIndex = viewModel.currentFlatIndex.coerceIn(0, ready.items.size - 1)
-    val initialIndex = resolvePublisherFloatTarget(ready.items, rawInitialIndex)
+    val initialIndex = rawInitialIndex
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialIndex,
         initialFirstVisibleItemScrollOffset = if (initialIndex == rawInitialIndex &&
@@ -1764,11 +1736,28 @@ private fun ScrollReader(
     }
 
     LaunchedEffect(ready) {
+        val charOffset = viewModel.currentCharOffset
+        if (charOffset > 0) {
+            repeat(6) {
+                withFrameNanos { }
+                val caret = selection.caretAt(BookAnchor(initialIndex, charOffset))
+                if (caret != null) {
+                    val correction = caret.top - readingTopReferencePx
+                    if (abs(correction) > 0.5f) listState.scrollBy(correction)
+                    return@LaunchedEffect
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(ready) {
         snapshotFlow {
             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }.collect { (index, offset) ->
                 displayedIndex.intValue = index.coerceAtMost(ready.items.size - 1)
-                viewModel.observeVisiblePosition(index, offset)
+                viewModel.observeVisiblePosition(
+                    index, offset, currentScrollLocation().charOffset ?: 0,
+                )
                 if (index >= ready.items.size - 1) viewModel.markFinished()
             }
     }
@@ -1829,15 +1818,14 @@ private fun ScrollReader(
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
             .collectLatest { (index, offset) ->
                 delay(400.milliseconds)
-                viewModel.saveProgress(index, offset)
+                viewModel.saveProgress(index, offset, currentScrollLocation().charOffset ?: 0)
             }
     }
     LaunchedEffect(seekTarget) {
         val target = seekTarget ?: return@LaunchedEffect
         val sourceItem = target.coerceIn(0, ready.items.size - 1)
-        val visibleItem = resolvePublisherFloatTarget(ready.items, sourceItem)
         livePosition.value = sourceItem.toFloat()
-        listState.scrollToItem(visibleItem)
+        listState.scrollToItem(sourceItem)
         onSeekConsumed()
     }
     LaunchedEffect(seekFraction) {
@@ -1845,13 +1833,13 @@ private fun ScrollReader(
         val item = (fraction * (ready.items.size - 1)).roundToInt()
             .coerceIn(0, ready.items.size - 1)
         livePosition.value = item.toFloat()
-        listState.scrollToItem(resolvePublisherFloatTarget(ready.items, item))
+        listState.scrollToItem(item)
         onSeekFractionConsumed()
     }
     LaunchedEffect(seekPosition) {
         val position = seekPosition ?: return@LaunchedEffect
         val sourceTarget = position.flatItemIndex.coerceIn(0, ready.items.size - 1)
-        val visibleTarget = resolvePublisherFloatTarget(ready.items, sourceTarget)
+        val visibleTarget = sourceTarget
         livePosition.value = sourceTarget.toFloat()
         val charOffset = position.charOffset
         if (charOffset == null) {
@@ -1890,6 +1878,7 @@ private fun ScrollReader(
             viewModel.saveProgress(
                 listState.firstVisibleItemIndex,
                 listState.firstVisibleItemScrollOffset,
+                currentScrollLocation().charOffset ?: 0,
             )
         }
     }
@@ -1955,9 +1944,6 @@ private fun ScrollReader(
         ) {
             items(ready.items.size, key = { it }) { index ->
                 val readerItem = ready.items[index]
-                if (readerItem.suppressedByPublisherFloat && settings.bookStyles) {
-                    return@items
-                }
                 RenderPart(
                     element = readerItem.element,
                     textOverride = null,
@@ -1974,8 +1960,6 @@ private fun ScrollReader(
                     searchHighlight = searchHighlight,
                     highlights = highlights,
                     itemIndex = index,
-                    publisherBoxes = readerItem.publisherBoxes,
-                    publisherFloat = readerItem.publisherFloat,
                 )
             }
             item(key = "completion") {
@@ -2445,6 +2429,7 @@ private fun PageView(
                 textOverride = part.text,
                 isParagraphStart = part.isParagraphStart,
                 imageHeightPx = part.imageHeightPx,
+                imageWidthPx = part.imageWidthPx,
                 settings = settings,
                 appSettings = appSettings,
                 fontSize = settings.fontSizeSp,
@@ -2458,16 +2443,11 @@ private fun PageView(
                 tableRowStart = part.rowStart,
                 tableRowEnd = part.rowEnd,
                 tableHeaderRepeated = part.headerRepeated,
-                sideBox = part.sideBox,
-                floatImagePath = part.floatImagePath,
                 highlights = highlights,
                 itemIndex = part.itemIndex,
 
 
                 charStart = if (part.text != null) part.charStart.coerceAtLeast(0) else 0,
-                publisherBoxes = part.publisherBoxes,
-                publisherStartsElement = part.publisherStartsElement,
-                publisherEndsElement = part.publisherEndsElement,
             )
         }
     }
@@ -2642,6 +2622,7 @@ private fun RenderPart(
     textOverride: androidx.compose.ui.text.AnnotatedString?,
     isParagraphStart: Boolean,
     imageHeightPx: Int?,
+    imageWidthPx: Int? = null,
     settings: ReaderSettings,
     appSettings: AppSettings,
     fontSize: Float,
@@ -2651,528 +2632,195 @@ private fun RenderPart(
     language: String? = null,
     footnotes: FootnoteHandler? = null,
     searchHighlight: String? = null,
-
     highlights: ReaderHighlights? = null,
-
     itemIndex: Int = -1,
-
     charStart: Int = 0,
     tableLayout: TableLayout? = null,
     tableRowStart: Int = -1,
     tableRowEnd: Int = -1,
     tableHeaderRepeated: Boolean = false,
-    sideBox: SideBoxSpec? = null,
-    floatImagePath: String? = null,
-    publisherBoxes: List<ReaderPublisherBox> = emptyList(),
-    publisherFloat: ReaderPublisherFloat? = null,
-    publisherStartsElement: Boolean = true,
-    publisherEndsElement: Boolean = true,
 ) {
-    val (vTop, vBottom) = ReaderMetrics.verticalPaddings(
-        element,
-        fontSize,
-        settings.bookStyles,
-    )
+    val (topPadding, bottomPadding) = ReaderMetrics.verticalPaddings(element, fontSize)
     val density = LocalDensity.current
-    val columnWidthPx = with(density) { contentWidth.roundToPx() }
-    val fontSizePx = with(density) { fontSize.sp.toPx() }
-    val boxGeometry = remember(
-        publisherBoxes,
-        columnWidthPx,
-        fontSizePx,
-        publisherStartsElement,
-        publisherEndsElement,
-        settings.bookStyles,
-    ) {
-        publisherBoxGeometry(
-            boxes = publisherBoxes,
-            columnWidthPx = columnWidthPx,
-            fontSizePx = fontSizePx,
-            partStartsElement = publisherStartsElement,
-            partEndsElement = publisherEndsElement,
-            enabled = settings.bookStyles,
-        )
-    }
-    val boxContentWidth = with(density) { boxGeometry.contentWidthPx.toDp() }
-    val (startInset, endInset) =
-        ReaderMetrics.horizontalInsets(element, boxContentWidth, fontSize)
-    val (leftInset, _) =
-        ReaderMetrics.physicalHorizontalInsets(element, boxContentWidth, fontSize)
-    val basePadding = ReaderMetrics.horizontalPadding(settings.pageMargins)
-    val publisherLeftInset = with(density) { boxGeometry.contentLeftPx.toDp() }
-    val publisherTopInset = with(density) { boxGeometry.topInsetPx.toDp() }
-    val publisherBottomInset = with(density) { boxGeometry.bottomInsetPx.toDp() }
-    val leftPadding = basePadding + publisherLeftInset + leftInset
-    val effectiveVTop = vTop + publisherTopInset
-    val effectiveVBottom = vBottom + publisherBottomInset
-    val publisherOwnsBackground = settings.bookStyles &&
-        hasPublisherBoxBackground(publisherBoxes)
-    val surroundingBackground = if (settings.bookStyles) {
-        publisherBoxEffectiveBackground(publisherBoxes, colors.background)
-    } else {
-        colors.background
-    }
-
-    val actuallyInvert = appSettings.autoInvertImages && appSettings.theme == AppTheme.OLED
-
-
-    val exactTextWidth = with(density) {
-        (boxGeometry.contentWidthPx - startInset.roundToPx() - endInset.roundToPx())
+    val contentWidthPx = with(density) { contentWidth.roundToPx() }
+    val (startInset, endInset) = ReaderMetrics.horizontalInsets(element, contentWidth, fontSize)
+    val (leftInset, _) = ReaderMetrics.physicalHorizontalInsets(element, contentWidth, fontSize)
+    val horizontalPadding = ReaderMetrics.horizontalPadding(settings.pageMargins)
+    val leftPadding = horizontalPadding + leftInset
+    val textWidth = with(density) {
+        (contentWidthPx - startInset.roundToPx() - endInset.roundToPx())
             .coerceAtLeast(1)
             .toDp()
     }
-
+    val invertImages = appSettings.autoInvertImages && appSettings.theme == AppTheme.OLED
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        val columnLeftPx = with(density) { basePadding.toPx() }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .drawPublisherBoxes(boxGeometry, columnLeftPx, fontSizePx),
-        ) {
+        Box(Modifier.fillMaxWidth()) {
             when (element) {
-        is ContentElement.Paragraph -> {
-
-
-            if (floatImagePath != null) {
-                val heightModifier = if (imageHeightPx != null) {
-                    with(LocalDensity.current) { Modifier.height(imageHeightPx.toDp()) }
-                } else {
-                    Modifier.heightIn(max = ReaderMetrics.maxImageHeight)
-                }
-                AsyncImage(
-                    model = File(floatImagePath),
-                    contentDescription = element.block?.floatImage?.altText,
-                    contentScale = ContentScale.Fit,
-                    colorFilter = imageColorFilter(actuallyInvert),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = basePadding, vertical = 12.dp)
-                        .then(heightModifier),
-                )
-                return@Box
-            }
-
-            val defaultTextColor = when (element.style) {
-                ParagraphStyle.QUOTE -> colors.secondaryText
-                else -> colors.text
-            }
-            val colorPair = publisherColorPair(
-                element.block,
-                settings.bookStyles,
-                defaultTextColor,
-                surroundingBackground,
-                backgroundAlreadyApplied = publisherOwnsBackground,
-            )
-            val linkColor = readableReaderForeground(colors.accent, colorPair.effectiveBackground)
-            fun decorated(raw: androidx.compose.ui.text.AnnotatedString) =
-                raw.withPublisherColors(settings.bookStyles, colorPair)
-                    .withFootnoteLinks(linkColor, footnotes)
-                    .withSearchHighlight(searchHighlight, colors.accent.copy(alpha = 0.3f))
-
-
-            if (sideBox != null && textOverride != null) {
-                val besideDisplay = remember(
-                    textOverride, settings.bookStyles, colorPair,
-                    colors, footnotes, searchHighlight,
-                ) { decorated(textOverride) }
-                SideBoxComposite(
-                    element = element,
-                    sideBox = sideBox,
-                    besideText = besideDisplay,
-                    settings = settings,
-                    fontSize = fontSize,
-                    bookFonts = bookFonts,
-                    language = language,
-                    colors = colors,
-                    surroundingBackground = surroundingBackground,
-                    publisherBackgroundAlreadyApplied = publisherOwnsBackground,
-                    totalWidthPx = with(LocalDensity.current) { exactTextWidth.roundToPx() },
-                    invertImages = actuallyInvert,
-                    highlights = highlights,
-                    itemIndex = itemIndex,
-                    footnotes = footnotes,
-                    searchHighlight = searchHighlight,
-                    modifier = Modifier.absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    ).then(
-                        colorPair.background
-                            ?.takeUnless { publisherOwnsBackground }
-                            ?.let { Modifier.background(it) }
-                            ?: Modifier,
-                    ),
-                )
-                return@Box
-            }
-
-
-            val isScrollMode = textOverride == null
-            if (isScrollMode) {
-                val scrollMeasurer = rememberTextMeasurer(cacheSize = 0)
-                val density = LocalDensity.current
-                val widthPx = with(density) { exactTextWidth.roundToPx() }
-                val plan = remember(
-                    element,
-                    publisherFloat,
-                    widthPx,
-                    density.density,
-                    density.fontScale,
-                    settings,
-                    fontSize,
-                    language,
-                    bookFonts,
-                ) {
-                    planSideBox(
-                        element, scrollMeasurer, density, settings, fontSize,
-                        bookFonts, language, widthPx,
-                        publisherFloat = publisherFloat,
+                is ContentElement.Paragraph, is ContentElement.Heading -> {
+                    val rawText = if (element is ContentElement.Paragraph) {
+                        textOverride ?: element.text
+                    } else {
+                        textOverride ?: (element as ContentElement.Heading).styledText
+                    }
+                    val defaultColor = if (element is ContentElement.Paragraph &&
+                        element.style == ParagraphStyle.QUOTE
+                    ) {
+                        colors.secondaryText
+                    } else {
+                        colors.text
+                    }
+                    val decoratedText = remember(
+                        rawText,
+                        colors.accent,
+                        footnotes,
+                        searchHighlight,
+                    ) {
+                        rawText.withoutPublisherColors()
+                            .withFootnoteLinks(colors.accent, footnotes)
+                            .withSearchHighlight(
+                                searchHighlight,
+                                colors.accent.copy(alpha = 0.3f),
+                            )
+                    }
+                    val bidiText = remember(decoratedText) { BidiLayoutText.of(decoratedText) }
+                    val fragment = rememberTextFragment(
+                        highlights,
+                        itemIndex,
+                        charStart,
+                        rawText.length,
+                        bidiText,
                     )
-                }
-                val floatBlock = element.block?.floatImage
-                    ?.takeIf { !settings.bookStyles }
-                if (plan != null || floatBlock != null) {
-                    Column(
-                        Modifier
+                    Text(
+                        text = bidiText.display,
+                        style = ReaderMetrics.textStyle(
+                            element,
+                            settings,
+                            fontSize,
+                            isParagraphStart,
+                            bookFonts,
+                            language,
+                        ).copy(color = defaultColor),
+                        onTextLayout = { fragment?.layout = it },
+                        modifier = Modifier
                             .absolutePadding(
                                 left = leftPadding,
-                                top = effectiveVTop,
-                                bottom = effectiveVBottom,
+                                top = topPadding,
+                                bottom = bottomPadding,
                             )
-                            .width(exactTextWidth)
-                            .then(
-                                colorPair.background
-                                    ?.takeUnless { publisherOwnsBackground }
-                                    ?.let { Modifier.background(it) }
-                                    ?: Modifier,
-                            ),
-                    ) {
-                        if (floatBlock != null) {
-                            AsyncImage(
-                                model = File(floatBlock.path),
-                                contentDescription = floatBlock.altText,
-                                contentScale = ContentScale.Fit,
-                                colorFilter = imageColorFilter(actuallyInvert),
-                                modifier = Modifier
-                                    .width(exactTextWidth)
-                                    .heightIn(max = ReaderMetrics.maxImageHeight)
-                                    .padding(bottom = 12.dp),
-                            )
-                        }
-                        if (plan != null) {
-                            val capLen = plan.capText?.length ?: 0
-                            val beside = remember(
-                                element, plan, settings.bookStyles, colorPair,
-                                colors, footnotes, searchHighlight,
-                            ) {
-                                decorated(element.text.subSequence(capLen, plan.besideEndChar))
-                            }
-                            SideBoxComposite(
-                                element = element,
-                                sideBox = plan,
-                                besideText = beside,
-                                settings = settings,
-                                fontSize = fontSize,
-                                bookFonts = bookFonts,
-                                language = language,
-                                colors = colors,
-                                surroundingBackground = surroundingBackground,
-                                publisherBackgroundAlreadyApplied = publisherOwnsBackground,
-                                totalWidthPx = widthPx,
-                                invertImages = actuallyInvert,
-                                highlights = highlights,
-                                itemIndex = itemIndex,
-                                footnotes = footnotes,
-                                searchHighlight = searchHighlight,
-                            )
-                            if (plan.besideEndChar < element.text.length) {
-                                val remainder = remember(
-                                    element, plan, settings.bookStyles, colorPair,
-                                    colors, footnotes, searchHighlight,
-                                ) {
-                                    decorated(
-                                        element.text.subSequence(
-                                            plan.besideEndChar, element.text.length,
-                                        ),
-                                    )
-                                }
-                                val remainderBidi = remember(remainder) {
-                                    BidiLayoutText.of(remainder)
-                                }
-                                val tail = rememberTextFragment(
-                                    highlights, itemIndex,
-                                    charStart = plan.besideEndChar,
-                                    length = element.text.length - plan.besideEndChar,
-                                    bidi = remainderBidi,
-                                )
-                                Text(
-                                    text = remainderBidi.display,
-                                    style = ReaderMetrics
-                                        .textStyle(
-                                            element, settings, fontSize,
-                                            isParagraphStart = false,
-                                            bookFonts = bookFonts,
-                                            language = language,
-                                        )
-                                        .copy(color = colorPair.foreground),
-                                    onTextLayout = { tail?.layout = it },
-                                    modifier = Modifier
-                                        .width(exactTextWidth)
-                                        .readerHighlights(tail, highlights),
-                                    inlineContent = inlineImageContent(
-                                        remainderBidi.display,
-                                        actuallyInvert,
-                                    ),
-                                )
-                            }
-                        } else {
-                            val whole = remember(
-                                element, settings.bookStyles, colorPair,
-                                colors, footnotes, searchHighlight,
-                            ) {
-                                decorated(element.text)
-                            }
-                            val wholeBidi = remember(whole) { BidiLayoutText.of(whole) }
-                            val fragment = rememberTextFragment(
-                                highlights, itemIndex, charStart = 0, length = element.text.length,
-                                bidi = wholeBidi,
-                            )
-                            Text(
-                                text = wholeBidi.display,
-                                style = ReaderMetrics
-                                    .textStyle(
-                                        element, settings, fontSize,
-                                        isParagraphStart, bookFonts, language,
-                                    )
-                                    .copy(color = colorPair.foreground),
-                                onTextLayout = { fragment?.layout = it },
-                                modifier = Modifier
-                                    .width(exactTextWidth)
-                                    .readerHighlights(fragment, highlights),
-                                inlineContent = inlineImageContent(
-                                    wholeBidi.display,
-                                    actuallyInvert,
-                                ),
-                            )
-                        }
-                    }
-                    return@Box
+                            .width(textWidth)
+                            .readerHighlights(fragment, highlights),
+                        inlineContent = inlineImageContent(bidiText.display, invertImages),
+                    )
                 }
-            }
 
-            val raw = textOverride ?: element.text
-            val decoratedDisplay = remember(
-                raw, settings.bookStyles, colorPair, colors, footnotes, searchHighlight,
-            ) {
-                decorated(raw)
-            }
-            val bidiDisplay = remember(decoratedDisplay) {
-                BidiLayoutText.of(decoratedDisplay)
-            }
-            val display = bidiDisplay.display
-            val fragment = rememberTextFragment(
-                highlights, itemIndex, charStart, raw.length, bidiDisplay,
-            )
-            Text(
-                text = display,
-                style = ReaderMetrics
-                    .textStyle(element, settings, fontSize, isParagraphStart, bookFonts, language)
-                    .copy(color = colorPair.foreground),
-                onTextLayout = { fragment?.layout = it },
-                modifier = Modifier
-                    .absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    )
-                    .width(exactTextWidth)
-                    .then(
-                        colorPair.background
-                            ?.takeUnless { publisherOwnsBackground }
-                            ?.let { Modifier.background(it) }
-                            ?: Modifier,
-                    )
-                    .readerHighlights(fragment, highlights),
-                inlineContent = inlineImageContent(display, actuallyInvert),
-            )
-        }
+                is ContentElement.Image -> {
+                    val maximumHeightPx = with(density) {
+                        ReaderMetrics.maxImageHeight.roundToPx()
+                    }
+                    val imageSize = if (imageWidthPx != null && imageHeightPx != null) {
+                        FlowImageSize(imageWidthPx, imageHeightPx)
+                    } else {
+                        flowImageSizePx(
+                            element = element,
+                            contentWidthPx = contentWidthPx,
+                            fontSizePx = with(density) { fontSize.sp.toPx() },
+                            maxHeightPx = maximumHeightPx,
+                        )
+                    }
+                    Box(
+                        contentAlignment = Alignment.TopCenter,
+                        modifier = Modifier
+                            .absolutePadding(
+                                left = horizontalPadding,
+                                top = topPadding,
+                                bottom = bottomPadding,
+                            )
+                            .width(contentWidth),
+                    ) {
+                        AsyncImage(
+                            model = File(element.path),
+                            contentDescription = element.altText,
+                            contentScale = if (element.heightEm != null &&
+                                (element.widthFrac != null || element.widthEm != null)
+                            ) ContentScale.FillBounds else ContentScale.Fit,
+                            colorFilter = imageColorFilter(invertImages),
+                            modifier = Modifier
+                                .width(with(density) { imageSize.widthPx.toDp() })
+                                .height(with(density) { imageSize.heightPx.toDp() }),
+                        )
+                    }
+                }
 
-        is ContentElement.Heading -> {
-            val raw = textOverride ?: element.styledText
-            val colorPair = publisherColorPair(
-                element.block,
-                settings.bookStyles,
-                colors.text,
-                surroundingBackground,
-                backgroundAlreadyApplied = publisherOwnsBackground,
-            )
-            val linkColor = readableReaderForeground(colors.accent, colorPair.effectiveBackground)
-            val decoratedDisplay = remember(
-                raw, settings.bookStyles, colorPair, linkColor, footnotes, searchHighlight, colors.accent,
-            ) {
-                raw.withPublisherColors(settings.bookStyles, colorPair)
-                    .withFootnoteLinks(linkColor, footnotes)
-                    .withSearchHighlight(searchHighlight, colors.accent.copy(alpha = 0.3f))
-            }
-            val bidiDisplay = remember(decoratedDisplay) {
-                BidiLayoutText.of(decoratedDisplay)
-            }
-            val display = bidiDisplay.display
-            val fragment = rememberTextFragment(
-                highlights, itemIndex, charStart, raw.length, bidiDisplay,
-            )
-            Text(
-                text = display,
-                style = ReaderMetrics
-                    .textStyle(element, settings, fontSize, isParagraphStart, bookFonts, language)
-                    .copy(color = colorPair.foreground),
-                onTextLayout = { fragment?.layout = it },
-                modifier = Modifier
-                    .absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    )
-                    .width(exactTextWidth)
-                    .then(
-                        colorPair.background
-                            ?.takeUnless { publisherOwnsBackground }
-                            ?.let { Modifier.background(it) }
-                            ?: Modifier,
-                    )
-                    .readerHighlights(fragment, highlights),
-                inlineContent = inlineImageContent(display, actuallyInvert),
-            )
-        }
-
-        is ContentElement.Image -> {
-            val availableImageWidthPx = with(density) { exactTextWidth.roundToPx() }
-            val publisherOwnsImageWidth = publisherBoxesOwnImageWidth(
-                publisherBoxes,
-                settings.bookStyles,
-            )
-            val displayImageWidthPx = imageWidthPx(
-                element = element,
-                contentWidthPx = availableImageWidthPx,
-                fontSizePx = fontSizePx,
-                publisherOwnsWidth = publisherOwnsImageWidth,
-            )
-            val displayImageHeightPx = imageHeightPx ?:
-                com.example.mobilereader.ui.reader.imageHeightPx(
-                element = element,
-                contentWidthPx = availableImageWidthPx,
-                fontSizePx = fontSizePx,
-                maxHeightPx = with(density) { ReaderMetrics.maxImageHeight.roundToPx() },
-                publisherOwnsWidth = publisherOwnsImageWidth,
-                )
-
-
-            Box(
-                contentAlignment = Alignment.TopCenter,
-                modifier = Modifier
-                    .absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    )
-                    .width(exactTextWidth),
-            ) {
-
-
-                AsyncImage(
-                    model = File(element.path),
-                    contentDescription = element.altText,
-                    contentScale = ContentScale.Fit,
-                    colorFilter = imageColorFilter(actuallyInvert),
+                ContentElement.Divider -> Box(
                     modifier = Modifier
-                        .width(with(density) { displayImageWidthPx.toDp() })
-                        .height(with(density) { displayImageHeightPx.coerceAtLeast(1).toDp() }),
+                        .fillMaxWidth()
+                        .padding(top = topPadding, bottom = bottomPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HorizontalDivider(
+                        color = colors.secondaryText.copy(alpha = 0.4f),
+                        modifier = Modifier.width(96.dp),
+                    )
+                }
+
+                is ContentElement.Spacer -> Spacer(
+                    Modifier.height(
+                        ReaderMetrics.spacerHeight(element, fontSize) +
+                            topPadding + bottomPadding,
+                    ),
                 )
-            }
-        }
 
-        ContentElement.Divider -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = effectiveVTop, bottom = effectiveVBottom),
-            contentAlignment = Alignment.Center,
-        ) {
-            HorizontalDivider(
-                color = colors.secondaryText.copy(alpha = 0.4f),
-                modifier = Modifier.width(96.dp),
-            )
-        }
-
-        is ContentElement.Spacer -> Spacer(
-            Modifier.height(
-                ReaderMetrics.spacerHeight(element, fontSize) +
-                    effectiveVTop + effectiveVBottom,
-            ),
-        )
-
-        is ContentElement.Table -> {
-
-
-            val scrollMeasurer = rememberTextMeasurer(cacheSize = 0)
-            val density = LocalDensity.current
-            val widthPx = boxGeometry.contentWidthPx
-            val layout = tableLayout ?: remember(
-                element,
-                widthPx,
-                density.density,
-                density.fontScale,
-                settings,
-                fontSize,
-                language,
-                bookFonts,
-            ) {
-                measureTableLayout(
-                    element, scrollMeasurer, density, settings,
-                    fontSize, widthPx, language, bookFonts,
-                )
-            }
-            TableBlock(
-                table = element,
-                layout = layout,
-                rowStart = if (tableRowStart >= 0) tableRowStart else 0,
-                rowEnd = if (tableRowEnd >= 0) tableRowEnd else element.rows.size,
-                headerRepeated = tableHeaderRepeated,
-                settings = settings,
-                fontSize = fontSize,
-                language = language,
-                bookFonts = bookFonts,
-                invertImages = actuallyInvert,
-                footnotes = footnotes,
-                searchHighlight = searchHighlight,
-                colors = colors,
-                surroundingBackground = surroundingBackground,
-                publisherBackgroundAlreadyApplied = publisherOwnsBackground,
-                highlights = highlights,
-                itemIndex = itemIndex,
-                modifier = Modifier.absolutePadding(
-                    left = basePadding + publisherLeftInset,
-                    top = effectiveVTop,
-                    bottom = effectiveVBottom,
-                ).then(
-                    publisherColorPair(
-                        element.block,
-                        settings.bookStyles,
-                        colors.text,
-                        surroundingBackground,
-                        backgroundAlreadyApplied = publisherOwnsBackground,
-                    ).background
-                        ?.takeUnless { publisherOwnsBackground }
-                        ?.let { Modifier.background(it) }
-                        ?: Modifier,
-                ),
-            )
+                is ContentElement.Table -> {
+                    val tableMeasurer = rememberTextMeasurer(cacheSize = 0)
+                    val layout = tableLayout ?: remember(
+                        element,
+                        contentWidthPx,
+                        density.density,
+                        density.fontScale,
+                        settings,
+                        fontSize,
+                        language,
+                        bookFonts,
+                    ) {
+                        measureTableLayout(
+                            element,
+                            tableMeasurer,
+                            density,
+                            settings,
+                            fontSize,
+                            contentWidthPx,
+                            language,
+                            bookFonts,
+                        )
+                    }
+                    TableBlock(
+                        table = element,
+                        layout = layout,
+                        rowStart = if (tableRowStart >= 0) tableRowStart else 0,
+                        rowEnd = if (tableRowEnd >= 0) tableRowEnd else element.rows.size,
+                        headerRepeated = tableHeaderRepeated,
+                        settings = settings,
+                        fontSize = fontSize,
+                        language = language,
+                        bookFonts = bookFonts,
+                        invertImages = invertImages,
+                        footnotes = footnotes,
+                        searchHighlight = searchHighlight,
+                        colors = colors,
+                        highlights = highlights,
+                        itemIndex = itemIndex,
+                        modifier = Modifier.absolutePadding(
+                            left = horizontalPadding,
+                            top = topPadding,
+                            bottom = bottomPadding,
+                        ),
+                    )
+                }
             }
         }
     }
 }
-}
-
 
 @Composable
 private fun SystemBarsEffect(theme: AppTheme, chromeVisible: Boolean) {
@@ -3623,13 +3271,13 @@ private fun ReaderBottomBar(
                                     settings = settings,
                                     appSettings = appSettings,
                                     colors = colors,
-                                    publisherStyle = ready.publisherStyle,
                                     brightness = brightness,
                                     onUpdate = onUpdate,
                                     onUpdateApp = onUpdateApp,
                                     onBrightnessChange = onBrightnessChange,
                                     translationSettings = translationSettings,
                                     onSaveTranslationSettings = onSaveTranslationSettings,
+                                    embeddedFonts = ready.embeddedFonts,
                                 )
 
                                 BarPanel.CONTENTS -> ReaderPanelsContent(

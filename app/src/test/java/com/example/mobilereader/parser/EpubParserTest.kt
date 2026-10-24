@@ -607,7 +607,6 @@ class EpubParserTest {
         assertTrue(content.fonts.isEmpty())
         assertTrue(content.chapters.single().elements.filterIsInstance<ContentElement.Paragraph>()
             .any { it.text.text.contains("Текст главы достаточной длины.") })
-        assertTrue(content.publisherPublication?.resources?.containsKey(fontPath) != true)
         assertTrue(cachedFont.isFile)
     }
 

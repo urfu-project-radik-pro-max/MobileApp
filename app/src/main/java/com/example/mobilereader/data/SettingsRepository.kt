@@ -47,7 +47,6 @@ data class ReaderSettings(
     val hyphenation: Boolean = true,
 
 
-    val bookStyles: Boolean = false,
     val pageMargins: PageMargins = PageMargins.NORMAL,
     val readingMode: ReadingMode = ReadingMode.SCROLL,
 
@@ -61,7 +60,6 @@ data class ReaderSettings(
     val invertImages: Boolean = false,
 
 
-    val dropCaps: Boolean = false,
 
     val pageTurnAnimationEnabled: Boolean = true,
     val edgeTapPagingEnabled: Boolean = true,
@@ -124,14 +122,12 @@ class SettingsRepository(private val context: Context) {
         val customFontPath = stringPreferencesKey("custom_font_path")
         val justify = booleanPreferencesKey("justify")
         val hyphenation = booleanPreferencesKey("hyphenation")
-        val bookStyles = booleanPreferencesKey("book_styles")
         val pageMargins = stringPreferencesKey("page_margins")
         val readingMode = stringPreferencesKey("reading_mode")
         val chapterNewPage = booleanPreferencesKey("chapter_new_page")
         val chapterPagesLeft = booleanPreferencesKey("chapter_pages_left")
         val hideFootnotes = booleanPreferencesKey("hide_footnotes")
         val invertImages = booleanPreferencesKey("invert_images")
-        val dropCaps = booleanPreferencesKey("drop_caps")
         val pageTurnAnimationEnabled = booleanPreferencesKey("page_turn_animation_enabled")
 
 
@@ -212,14 +208,12 @@ class SettingsRepository(private val context: Context) {
                 ?: prefs.remove(Keys.customFontPath)
             prefs[Keys.justify] = updated.justify
             prefs[Keys.hyphenation] = updated.hyphenation
-            prefs[Keys.bookStyles] = updated.bookStyles
             prefs[Keys.pageMargins] = updated.pageMargins.name
             prefs[Keys.readingMode] = updated.readingMode.name
             prefs[Keys.chapterNewPage] = updated.startChaptersOnNewPage
             prefs[Keys.chapterPagesLeft] = updated.showChapterPagesLeft
             prefs[Keys.hideFootnotes] = updated.hideFootnotes
             prefs[Keys.invertImages] = updated.invertImages
-            prefs[Keys.dropCaps] = updated.dropCaps
             prefs[Keys.pageTurnAnimationEnabled] = updated.pageTurnAnimationEnabled
             ReaderGestureSettingsStore.write(prefs, updated)
         }
@@ -251,14 +245,12 @@ class SettingsRepository(private val context: Context) {
             customFontPath = this[Keys.customFontPath],
             justify = this[Keys.justify] ?: defaults.justify,
             hyphenation = this[Keys.hyphenation] ?: defaults.hyphenation,
-            bookStyles = this[Keys.bookStyles] ?: defaults.bookStyles,
             pageMargins = enumOrDefault(this[Keys.pageMargins], defaults.pageMargins),
             readingMode = enumOrDefault(this[Keys.readingMode], defaults.readingMode),
             startChaptersOnNewPage = this[Keys.chapterNewPage] ?: defaults.startChaptersOnNewPage,
             showChapterPagesLeft = this[Keys.chapterPagesLeft] ?: defaults.showChapterPagesLeft,
             hideFootnotes = this[Keys.hideFootnotes] ?: defaults.hideFootnotes,
             invertImages = this[Keys.invertImages] ?: defaults.invertImages,
-            dropCaps = this[Keys.dropCaps] ?: defaults.dropCaps,
             pageTurnAnimationEnabled = this[Keys.pageTurnAnimationEnabled]
                 ?: defaults.pageTurnAnimationEnabled,
             edgeTapPagingEnabled = ReaderGestureSettingsStore.readEdgeTapPagingEnabled(this),

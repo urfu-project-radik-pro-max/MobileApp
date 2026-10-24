@@ -32,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.BrightnessAuto
@@ -116,7 +115,6 @@ import com.example.mobilereader.data.PageMargins
 import com.example.mobilereader.data.ReaderFont
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.EmbeddedFont
-import com.example.mobilereader.data.model.PublisherStyle
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.theme.customFontFamily
 import com.example.mobilereader.data.ReaderSettings
@@ -534,7 +532,7 @@ fun ReaderSettingsControls(
     onBrightnessChange: (Float?) -> Unit,
     translationSettings: TranslationSettings,
     onSaveTranslationSettings: (TranslationSettings) -> Unit,
-    publisherStyle: PublisherStyle? = null,
+    embeddedFonts: List<EmbeddedFont> = emptyList(),
 ) {
     val safeCategoryIndex = selectedCategoryIndex.coerceIn(0, ReaderSettingsCategory.entries.lastIndex)
     val selectedCategory = ReaderSettingsCategory.entries[safeCategoryIndex]
@@ -588,7 +586,7 @@ fun ReaderSettingsControls(
                         ),
                     )
                 },
-                publisherStyle = publisherStyle,
+                embeddedFonts = embeddedFonts,
             )
         }
         SecondaryScrollableTabRow(
@@ -729,63 +727,12 @@ private fun ReaderSettingsCategoryContent(
     translationSettings: TranslationSettings,
     onTranslationSettingsChange: (TranslationSettings) -> Unit,
     onSaveTranslationSettings: () -> Unit,
+    embeddedFonts: List<EmbeddedFont> = emptyList(),
 
-    publisherStyle: PublisherStyle? = null,
 ) {
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
 
-
-    val book = publisherStyle?.takeIf { settings.bookStyles }
-    val shownJustify = book?.justify ?: settings.justify
-    val shownHyphenation = book?.hyphenation ?: settings.hyphenation
-    val shownLineHeight = book?.lineHeight ?: settings.lineHeight
-    val shownDropCaps = settings.dropCaps || book?.dropCaps == true
-    val bookFontFamily = remember(book?.fontPath, book?.fontCss) {
-        book?.fontPath?.let { customFontFamily(it) }
-            ?: when (book?.fontCss) {
-                "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
-                "sans-serif" -> androidx.compose.ui.text.font.FontFamily.SansSerif
-                "monospace" -> androidx.compose.ui.text.font.FontFamily.Monospace
-                "cursive" -> androidx.compose.ui.text.font.FontFamily.Cursive
-                else -> null
-            }
-    }
-
-
-    fun bakeBook(dictated: Boolean, keepFont: Boolean = true): (ReaderSettings) -> ReaderSettings {
-        val style = book?.takeIf { dictated } ?: return { it }
-
-
-        val fontPath = style.fontPath
-            ?.takeIf { keepFont }
-            ?.let { storeBookFont(context, it, style.fontName) }
-
-
-        val genericFont = style.fontCss
-            ?.takeIf { keepFont && style.fontPath == null }
-            ?.let {
-                when (it) {
-                    "serif" -> ReaderFont.SERIF
-                    "sans-serif" -> ReaderFont.SANS
-                    else -> null
-                }
-            }
-        return { current ->
-            var out = current.copy(bookStyles = false)
-            style.justify?.let { out = out.copy(justify = it) }
-            style.lineHeight?.let { out = out.copy(lineHeight = it) }
-            style.hyphenation?.let { out = out.copy(hyphenation = it) }
-            if (style.dropCaps) out = out.copy(dropCaps = true)
-            when {
-                fontPath != null ->
-                    out = out.copy(font = ReaderFont.CUSTOM, customFontPath = fontPath)
-
-                genericFont != null -> out = out.copy(font = genericFont)
-            }
-            out
-        }
-    }
 
     Column {
         when (category) {
@@ -922,22 +869,20 @@ private fun ReaderSettingsCategoryContent(
                     Column(Modifier.weight(1f)) {
                         PanelSectionLabel(stringResource(R.string.reader_line_height), colors)
                         StepperGroup(
-                            value = "×%.1f".format(shownLineHeight),
+                            value = "×%.1f".format(settings.lineHeight),
                             colors = colors,
                             onDecrease = {
-                                val bake = bakeBook(book?.lineHeight != null)
                                 onUpdate {
-                                    bake(it).copy(
-                                        lineHeight = (((shownLineHeight - 0.1f) * 10).roundToInt() / 10f)
+                                    it.copy(
+                                        lineHeight = (((it.lineHeight - 0.1f) * 10).roundToInt() / 10f)
                                             .coerceAtLeast(1.2f),
                                     )
                                 }
                             },
                             onIncrease = {
-                                val bake = bakeBook(book?.lineHeight != null)
                                 onUpdate {
-                                    bake(it).copy(
-                                        lineHeight = (((shownLineHeight + 0.1f) * 10).roundToInt() / 10f)
+                                    it.copy(
+                                        lineHeight = (((it.lineHeight + 0.1f) * 10).roundToInt() / 10f)
                                             .coerceAtMost(2.0f),
                                     )
                                 }
@@ -1014,55 +959,41 @@ private fun ReaderSettingsCategoryContent(
                 }
 
 
-                val bookFontName = book?.fontName
                 ChipRow(
                     options = listOf(
                         stringResource(R.string.reader_font_literata),
                         stringResource(R.string.reader_font_sans),
-                        bookFontName ?: stringResource(R.string.reader_font_custom),
+                        stringResource(R.string.reader_font_custom),
                     ),
                     optionFontFamilies = listOf(
                         com.example.mobilereader.ui.theme.LiterataFamily,
                         androidx.compose.ui.text.font.FontFamily.SansSerif,
-                        bookFontFamily,
+                        settings.customFontPath?.let(::customFontFamily),
                     ),
                     selectedIndex = when {
-                        bookFontName != null -> 2
                         settings.font == ReaderFont.SANS -> 1
                         settings.font == ReaderFont.CUSTOM -> 2
                         else -> 0
                     },
                     colors = colors,
                     onSelect = { index ->
-                        val bake = bakeBook(bookFontName != null, keepFont = false)
                         when (index) {
-                            0 -> onUpdate { bake(it).copy(font = ReaderFont.LITERATA) }
-                            1 -> onUpdate { bake(it).copy(font = ReaderFont.SANS) }
+                            0 -> onUpdate { it.copy(font = ReaderFont.LITERATA) }
+                            1 -> onUpdate { it.copy(font = ReaderFont.SANS) }
                             else -> showFontDialog = true
                         }
                     },
                 )
-                if (bookFontName != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(R.string.reader_font_from_book),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.accent,
-                        modifier = Modifier.padding(start = 4.dp),
-                    )
-                }
                 if (showFontDialog) {
                     CustomFontsDialog(
                         colors = colors,
-                        bookFonts = book?.embeddedFonts.orEmpty(),
-                        bodyFontPath = book?.fontPath,
+                        bookFonts = embeddedFonts,
+                        bodyFontPath = null,
                         onPickBookFont = { font ->
-
                             val stored = storeBookFont(context, font.path, font.name)
-                            val bake = bakeBook(bookFontName != null, keepFont = false)
                             if (stored != null) {
                                 onUpdate {
-                                    bake(it).copy(font = ReaderFont.CUSTOM, customFontPath = stored)
+                                    it.copy(font = ReaderFont.CUSTOM, customFontPath = stored)
                                 }
                             }
                             showFontDialog = false
@@ -1082,8 +1013,7 @@ private fun ReaderSettingsCategoryContent(
                             )
                         },
                         onPick = { path ->
-                            val bake = bakeBook(bookFontName != null, keepFont = false)
-                            onUpdate { bake(it).copy(font = ReaderFont.CUSTOM, customFontPath = path) }
+                            onUpdate { it.copy(font = ReaderFont.CUSTOM, customFontPath = path) }
                             showFontDialog = false
                         },
                         onDelete = { path ->
@@ -1112,23 +1042,12 @@ private fun ReaderSettingsCategoryContent(
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(colors) {
                     SettingToggleRow(
-                        icon = Icons.Rounded.AutoFixHigh,
-                        title = stringResource(R.string.reader_book_styles),
-                        subtitle = stringResource(R.string.reader_book_styles_subtitle),
-                        colors = colors,
-                        checked = settings.bookStyles,
-                        onCheckedChange = { onUpdate { s -> s.copy(bookStyles = it) } },
-                    )
-                    PanelDivider(colors)
-                    SettingToggleRow(
                         icon = Icons.Rounded.FormatAlignJustify,
                         title = stringResource(R.string.reader_justify),
                         colors = colors,
-                        checked = shownJustify,
-                        fromBook = book?.justify != null,
+                        checked = settings.justify,
                         onCheckedChange = { value ->
-                            val bake = bakeBook(book?.justify != null)
-                            onUpdate { s -> bake(s).copy(justify = value) }
+                            onUpdate { it.copy(justify = value) }
                         },
                     )
                     PanelDivider(colors)
@@ -1136,24 +1055,9 @@ private fun ReaderSettingsCategoryContent(
                         icon = Icons.Rounded.Remove,
                         title = stringResource(R.string.reader_hyphenation),
                         colors = colors,
-                        checked = shownHyphenation,
-                        fromBook = book?.hyphenation != null,
+                        checked = settings.hyphenation,
                         onCheckedChange = { value ->
-                            val bake = bakeBook(book?.hyphenation != null)
-                            onUpdate { s -> bake(s).copy(hyphenation = value) }
-                        },
-                    )
-                    PanelDivider(colors)
-                    SettingToggleRow(
-                        icon = Icons.Rounded.FormatSize,
-                        title = stringResource(R.string.reader_drop_caps),
-                        subtitle = stringResource(R.string.reader_drop_caps_subtitle),
-                        colors = colors,
-                        checked = shownDropCaps,
-                        fromBook = book?.dropCaps == true,
-                        onCheckedChange = { value ->
-                            val bake = bakeBook(book?.dropCaps == true)
-                            onUpdate { s -> bake(s).copy(dropCaps = value) }
+                            onUpdate { it.copy(hyphenation = value) }
                         },
                     )
                     PanelDivider(colors)

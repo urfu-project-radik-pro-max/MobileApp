@@ -10,20 +10,11 @@ import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.LinkedDocument
 import com.example.mobilereader.data.model.LinkedDocumentTarget
 import com.example.mobilereader.data.model.NoteDocument
-import com.example.mobilereader.data.model.PrimaryWritingMode
-import com.example.mobilereader.data.model.PublisherCapability
-import com.example.mobilereader.data.model.PublisherPublication
-import com.example.mobilereader.data.model.PublisherResource
-import com.example.mobilereader.data.model.PublisherRendition
-import com.example.mobilereader.data.model.PublisherSourceDescriptor
-import com.example.mobilereader.data.model.PublisherSpineItem
-import com.example.mobilereader.data.model.PublisherViewport
-import com.example.mobilereader.data.model.RenditionLayout
-import com.example.mobilereader.data.model.slicePublisherBoxSpans
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
+import org.jsoup.parser.Tag
 import java.io.DataInputStream
 import java.io.File
 import java.net.URLDecoder
@@ -50,16 +41,6 @@ object EpubParser {
     private class SpineItem(
         val item: ManifestItem,
         val linear: Boolean,
-        val ordinal: Int,
-        val itemRefId: String?,
-        val itemRefProperties: String,
-    )
-
-
-    private class PublisherDocumentInfo(
-        val viewport: PublisherViewport?,
-        val title: String?,
-        val capabilities: Set<PublisherCapability>,
     )
 
 
@@ -246,8 +227,7 @@ object EpubParser {
             val toc =
                 chapterTitles(epubArchive, packageDocument, items, packageDirectory, budget, limits)
             val titlesByPath = toc.byPath
-            val packageRendition = EpubRenditionParser.parsePackage(packageDocument)
-            val publisherDocuments = mutableMapOf<String, PublisherDocumentInfo>()
+            val pageProgression = EpubPageProgressionParser.parsePageProgression(packageDocument)
             val metadataLanguage = LanguageTag.normalize(
                 packageDocument.selectFirst("metadata > dc|language")?.text(),
             )
@@ -296,7 +276,13 @@ object EpubParser {
                 if (!spineItem.linear && chapterPath in linearPaths) continue
                 val linear = spineItem.linear
                 if (!linear && !processedLinkedPaths.add(chapterPath)) continue
-                val entry = zipEntry(epubArchive, chapterPath) ?: continue
+                val entry = zipEntry(epubArchive, chapterPath)
+                if (entry == null) {
+                    if (linear) throw IllegalArgumentException(
+                        "EPUB required chapter '$chapterPath' is missing from the archive",
+                    )
+                    continue
+                }
 
                 if (item.mediaType.equals("image/svg+xml", ignoreCase = true)) {
                     val imagePath = extractImage(
@@ -307,7 +293,9 @@ object EpubParser {
                         budget,
                         limits,
                         required = linear,
-                    ) ?: continue
+                    ) ?: if (linear) throw IllegalArgumentException(
+                        "EPUB required image page '$chapterPath' cannot be read",
+                    ) else continue
                     val svgDocument = parseOptionalXml(
                         epubArchive,
                         chapterPath,
@@ -325,16 +313,6 @@ object EpubParser {
                             }.trim().takeIf(String::isNotEmpty)
                         }
                     val tocEntry = titlesByPath[chapterPath]?.firstOrNull()
-                    publisherDocuments.putIfAbsent(
-                        chapterPath,
-                        PublisherDocumentInfo(
-                            viewport = svgDocument?.let(EpubRenditionParser::parseSvgViewport),
-                            title = tocEntry?.title ?: svgRoot?.children()
-                                ?.firstOrNull { it.localName() == "title" }
-                                ?.text()?.trim()?.takeIf(String::isNotEmpty),
-                            capabilities = setOf(PublisherCapability.STANDALONE_SVG),
-                        ),
-                    )
                     val image = ContentElement.Image(path = imagePath, altText = svgAlt)
                     if (linear) {
                         val chapterIndex = chapters.size
@@ -358,7 +336,12 @@ object EpubParser {
                     continue
                 }
                 val dtbook = item.mediaType.equals(DTBOOK_MEDIA_TYPE, ignoreCase = true)
-                if (!item.mediaType.contains("html", ignoreCase = true) && !dtbook) continue
+                if (!item.mediaType.contains("html", ignoreCase = true) && !dtbook) {
+                    if (linear) throw IllegalArgumentException(
+                        "EPUB required chapter '$chapterPath' has unsupported media type '${item.mediaType}'",
+                    )
+                    continue
+                }
 
                 val chapterDir = chapterPath.substringBeforeLast('/', "")
 
@@ -368,24 +351,9 @@ object EpubParser {
                     budget,
                     limits,
                     required = linear,
-                ) ?: continue
-                publisherDocuments.putIfAbsent(
-                    chapterPath,
-                    publisherDocumentInfo(
-                        document = doc,
-                        item = item,
-                        tocTitle = titlesByPath[chapterPath]?.firstOrNull()?.title,
-                    ),
-                )
-                val body = if (dtbook) {
-                    doc.selectFirst("book")
-                } else {
-                    doc.selectFirst("body")
-                } ?: continue
-                if (fb2EpubConversion) {
-                    promoteFb2EpubNoteLinks(body, chapterPath, chapterDir)
-                }
-
+                ) ?: if (linear) throw IllegalArgumentException(
+                    "EPUB required chapter '$chapterPath' cannot be parsed",
+                ) else continue
                 val resolver = cssResolverFor(
                     doc,
                     epubArchive,
@@ -396,6 +364,21 @@ object EpubParser {
                     limits,
                     cssBudget,
                 )
+                val originalBody = if (dtbook) {
+                    doc.selectFirst("book")
+                } else {
+                    doc.selectFirst("body")
+                }
+                val body = originalBody ?: recoverReadableBody(doc, resolver)
+                if (body == null) {
+                    if (linear) throw IllegalArgumentException(
+                        "EPUB required chapter '$chapterPath' has no readable body or book",
+                    )
+                    continue
+                }
+                if (fb2EpubConversion) {
+                    promoteFb2EpubNoteLinks(body, chapterPath, chapterDir)
+                }
                 if (resolver != null) {
                     extractFonts(
                         resolver,
@@ -407,7 +390,7 @@ object EpubParser {
                         limits,
                     )
                 }
-                val mapper = HtmlMapper(
+                fun newMapper() = HtmlMapper(
                     resolveImage = { src ->
                         extractImage(
                             epubArchive,
@@ -422,18 +405,28 @@ object EpubParser {
                     css = resolver,
                     resolveInlineSvg = { markup -> writeInlineSvg(markup, imagesDir, inlineSvgs) },
                     expansionBudget = htmlExpansionBudget,
-
-
-                    publisherBoxIdPrefix = "$chapterPath@${spineItem.ordinal}",
                 )
-                val elements = mapper.map(body)
+                var mapper = newMapper()
+                var elements = mapper.map(body)
+                if (elements.isEmpty() && originalBody != null) {
+                    val recoveredBody = recoverReadableBody(originalBody, resolver)
+                    if (recoveredBody != null) {
+                        mapper = newMapper()
+                        elements = mapper.map(recoveredBody)
+                    }
+                }
                 mapper.noteDocuments.forEach { (id, note) ->
                     exactNoteDocuments.putIfAbsent("$chapterPath#$id", note)
                 }
 
 
                 resolver?.clearCache()
-                if (elements.isEmpty()) continue
+                if (elements.isEmpty()) {
+                    if (linear) throw IllegalArgumentException(
+                        "EPUB required chapter '$chapterPath' has no readable content",
+                    )
+                    continue
+                }
                 linkTargets += mapper.linkTargets
                 noteTargets += mapper.noteTargets
 
@@ -446,7 +439,6 @@ object EpubParser {
                         id = chapterPath,
                         title = title,
                         elements = elements,
-                        publisherBoxes = mapper.publisherBoxes.toList(),
                     )
                     linkedLocations.putIfAbsent(
                         chapterPath,
@@ -506,12 +498,6 @@ object EpubParser {
                             title = previous.title,
                             elements = previous.elements + elements.subList(start, end),
                             depth = previous.depth,
-                            publisherBoxes = previous.publisherBoxes + slicePublisherBoxSpans(
-                                spans = mapper.publisherBoxes,
-                                startElement = start,
-                                endElementExclusive = end,
-                                destinationOffset = elementBase,
-                            ),
                         )
                         chapterIndex = chapters.lastIndex
                     } else {
@@ -525,11 +511,6 @@ object EpubParser {
                             title = title,
                             elements = segment,
                             depth = tocEntry?.depth ?: 0,
-                            publisherBoxes = slicePublisherBoxSpans(
-                                spans = mapper.publisherBoxes,
-                                startElement = start,
-                                endElementExclusive = end,
-                            ),
                         )
                     }
                     added += AddedSegment(start, end, chapterIndex, elementBase)
@@ -574,7 +555,6 @@ object EpubParser {
                         Chapter(
                             title = document.title,
                             elements = document.elements,
-                            publisherBoxes = document.publisherBoxes,
                         ),
                     ),
                     anchorLocations = localAnchors,
@@ -612,19 +592,7 @@ object EpubParser {
                 linkedDocuments = linkedDocuments,
                 linkedDocumentTargets = linkedLocations.filterKeys { it in linkTargets },
                 navigation = navigation,
-                publisherPublication = buildPublisherPublication(
-                    epubArchive = epubArchive,
-                    packagePath = packagePath,
-                    packageDirectory = packageDirectory,
-                    packageRendition = packageRendition,
-                    spine = spine,
-                    items = items,
-                    titlesByPath = titlesByPath,
-                    documents = publisherDocuments,
-                    encryption = encryption,
-                    limits = limits,
-                ),
-                pageProgression = packageRendition.pageProgression,
+                pageProgression = pageProgression,
             )
         }
     }
@@ -696,6 +664,70 @@ object EpubParser {
         return parseChapterDocument(bytes)
     }
 
+    private fun recoverReadableBody(source: Element, resolver: CssResolver?): Element? {
+        val recoveredBody = Element(Tag.valueOf("body"), "")
+        var examinedNodes = 0
+        var recoveredBlocks = 0
+        val excludedTags = setOf(
+            "head", "title", "meta", "metadata", "link", "script", "style", "template",
+            "noscript", "nav", "toc", "ncx", "header", "footer", "form", "button",
+            "input", "select", "textarea", "aside",
+        )
+        val readableTags = setOf(
+            "p", "pre", "li", "dt", "dd", "ul", "ol", "list", "h1", "h2", "h3",
+            "h4", "h5", "h6", "levelhd", "hd", "bridgehead", "doctitle", "covertitle",
+            "math", "img", "image", "svg", "a", "table", "line",
+        )
+
+        fun excluded(element: Element): Boolean =
+            element.normalName() in excludedTags || element.hasAttr("hidden") ||
+                resolver?.computed(element)?.hidden == true
+
+        fun visit(element: Element, depth: Int) {
+            if (depth >= HtmlMapper.DEFAULT_HTML_STRUCTURE_DEPTH) {
+                throw ResourceLimitException(
+                    ResourceLimitKind.STRUCTURAL_DEPTH,
+                    "EPUB chapter recovery exceeds the HTML structure depth limit",
+                )
+            }
+            examinedNodes++
+            if (examinedNodes > 50_000) {
+                throw IllegalArgumentException("EPUB chapter recovery has too many document nodes")
+            }
+            if (excluded(element)) return
+            if (element.normalName() in readableTags) {
+                val sourceElements = element.getAllElements().toList()
+                if (examinedNodes + sourceElements.size > 50_000) {
+                    throw IllegalArgumentException("EPUB chapter recovery has too many document nodes")
+                }
+                sourceElements.forEach { descendant ->
+                    if (descendant.parents().size + depth - element.parents().size >=
+                        HtmlMapper.DEFAULT_HTML_STRUCTURE_DEPTH
+                    ) {
+                        throw ResourceLimitException(
+                            ResourceLimitKind.STRUCTURAL_DEPTH,
+                            "EPUB chapter recovery exceeds the HTML structure depth limit",
+                        )
+                    }
+                }
+                examinedNodes += sourceElements.size - 1
+                val copy = element.clone()
+                val copiedElements = copy.getAllElements().toList()
+                for (index in sourceElements.indices.reversed()) {
+                    val original = sourceElements[index]
+                    if (index > 0 && excluded(original)) copiedElements[index].remove()
+                }
+                recoveredBody.appendChild(copy)
+                recoveredBlocks++
+                return
+            }
+            element.children().forEach { child -> visit(child, depth + 1) }
+        }
+
+        visit(source, 0)
+        return recoveredBody.takeIf { recoveredBlocks > 0 }
+    }
+
 
     private fun spineItems(packageDocument: Document, items: List<ManifestItem>): List<SpineItem> {
         val itemsById = items.associateBy { it.id }
@@ -717,243 +749,25 @@ object EpubParser {
 
         val refs = packageDocument.select("spine > itemref")
         if (refs.isNotEmpty()) {
-            val resolved = refs.mapIndexedNotNull { ordinal, ref ->
-                itemsById[ref.attr("idref")]?.let(::renderable)?.let { rendered ->
-                    SpineItem(
-                        item = rendered,
-                        linear = !ref.attr("linear").equals("no", ignoreCase = true),
-                        ordinal = ordinal,
-                        itemRefId = ref.attr("id").trim().takeIf(String::isNotEmpty),
-                        itemRefProperties = ref.attr("properties"),
+            val resolved = refs.mapNotNull { ref ->
+                val idref = ref.attr("idref")
+                val linear = !ref.attr("linear").equals("no", ignoreCase = true)
+                val item = itemsById[idref]
+                val rendered = item?.let(::renderable)
+                if (rendered == null) {
+                    if (linear) throw IllegalArgumentException(
+                        "EPUB required spine item '$idref' has no readable manifest resource",
                     )
+                    null
+                } else {
+                    SpineItem(item = rendered, linear = linear)
                 }
             }
-            if (resolved.isNotEmpty()) return resolved
-
-
+            return resolved
         }
         return items.mapNotNull(::renderable)
             .distinctBy { it.id }
-            .mapIndexed { ordinal, item ->
-                SpineItem(
-                    item = item,
-                    linear = true,
-                    ordinal = ordinal,
-                    itemRefId = null,
-                    itemRefProperties = "",
-                )
-            }
-    }
-
-
-    private fun buildPublisherPublication(
-        epubArchive: ZipFile,
-        packagePath: String,
-        packageDirectory: String,
-        packageRendition: EpubRenditionParser.PackageRendition,
-        spine: List<SpineItem>,
-        items: List<ManifestItem>,
-        titlesByPath: Map<String, List<TocEntry>>,
-        documents: Map<String, PublisherDocumentInfo>,
-        encryption: Set<String>,
-        limits: ReaderResourceLimits = ReaderResourceLimits.DEFAULT,
-    ): PublisherPublication? {
-        val resources = publisherResources(
-            epubArchive = epubArchive,
-            packageDirectory = packageDirectory,
-            items = items,
-            encryption = encryption,
-            limits = limits,
-        )
-        val publisherSpine = spine.mapNotNull { occurrence ->
-            val path = resolvePublisherPath(packageDirectory, occurrence.item.href)
-                ?: return@mapNotNull null
-            val resource = resources[path] ?: return@mapNotNull null
-            if (!isPublisherDocument(resource.mediaType)) return@mapNotNull null
-
-            val document = documents[path]
-            val rendition = packageRendition.resolveItemRef(
-                properties = occurrence.itemRefProperties,
-                documentViewport = document?.viewport,
-            )
-            PublisherSpineItem(
-                id = EpubRenditionParser.occurrenceId(
-                    spineOrdinal = occurrence.ordinal,
-                    itemRefId = occurrence.itemRefId,
-                    manifestId = occurrence.item.id,
-                ),
-                itemRefId = occurrence.itemRefId,
-                manifestId = occurrence.item.id,
-                resourcePath = path,
-                linear = occurrence.linear,
-                title = document?.title
-                    ?: titlesByPath[path]?.firstOrNull()?.title,
-                rendition = rendition,
-                capabilities = publisherCapabilities(
-                    item = occurrence.item,
-                    rendition = rendition,
-                    document = document,
-                ),
-            )
-        }
-
-
-        if (publisherSpine.none { it.rendition.layout == RenditionLayout.PRE_PAGINATED }) {
-            return null
-        }
-        return PublisherPublication(
-            format = packageRendition.format,
-            profile = packageRendition.profile,
-            source = PublisherSourceDescriptor.EpubArchive(packagePath = packagePath),
-            defaults = packageRendition.defaults,
-            pageProgression = packageRendition.pageProgression,
-            spine = publisherSpine,
-            resources = resources,
-        )
-    }
-
-
-    private fun publisherResources(
-        epubArchive: ZipFile,
-        packageDirectory: String,
-        items: List<ManifestItem>,
-        encryption: Set<String>,
-        limits: ReaderResourceLimits,
-    ): Map<String, PublisherResource> {
-        val resources = linkedMapOf<String, PublisherResource>()
-        for (item in items) {
-            val path = resolvePublisherPath(packageDirectory, item.href) ?: continue
-            val entry = zipEntry(epubArchive, path)?.takeUnless { it.isDirectory } ?: continue
-            val mediaType = item.mediaType.substringBefore(';').trim().lowercase(Locale.ROOT)
-            if (!isPublisherResource(mediaType)) continue
-            val declaredLimit = publisherResourceLimit(mediaType, limits)
-            if (entry.size > declaredLimit) continue
-
-            if (path in encryption) continue
-            val properties = item.propertyTokens()
-            val existing = resources[path]
-            if (existing == null) {
-                resources[path] = PublisherResource(
-                    path = path,
-                    mediaType = mediaType,
-                    properties = properties,
-                )
-            } else if (existing.mediaType == mediaType) {
-
-
-                resources[path] = existing.copy(properties = existing.properties + properties)
-            }
-        }
-        return resources
-    }
-
-    private fun publisherDocumentInfo(
-        document: Document,
-        item: ManifestItem,
-        tocTitle: String?,
-    ): PublisherDocumentInfo {
-        val all = document.getAllElements()
-        val localNames = all.mapTo(mutableSetOf()) { it.localName() }
-        val styleText = buildString {
-            all.forEach { element ->
-                element.attr("style").takeIf(String::isNotBlank)?.let {
-                    append(it).append('\n')
-                }
-                if (element.localName() == "style") {
-                    append(element.data().ifBlank { element.text() }).append('\n')
-                }
-            }
-        }
-        val capabilities = buildSet {
-            if ("math" in localNames) add(PublisherCapability.MATHML)
-            if ("svg" in localNames && !item.mediaType.equals("image/svg+xml", true)) {
-                add(PublisherCapability.EMBEDDED_SVG)
-            }
-            if ("script" in localNames) add(PublisherCapability.SCRIPTED)
-            if (VERTICAL_WRITING_DECLARATION.containsMatchIn(styleText)) {
-                add(PublisherCapability.VERTICAL_WRITING)
-            }
-        }
-        val html = all.firstOrNull { it.localName() == "html" }
-        val head = html?.children()?.firstOrNull { it.localName() == "head" }
-        val title = tocTitle
-            ?: head?.children()?.firstOrNull { it.localName() == "title" }
-                ?.text()?.trim()?.takeIf(String::isNotEmpty)
-        return PublisherDocumentInfo(
-            viewport = if (item.mediaType.contains("html", ignoreCase = true)) {
-                EpubRenditionParser.parseXhtmlViewport(document)
-            } else {
-                null
-            },
-            title = title,
-            capabilities = capabilities,
-        )
-    }
-
-    private fun publisherCapabilities(
-        item: ManifestItem,
-        rendition: PublisherRendition,
-        document: PublisherDocumentInfo?,
-    ): Set<PublisherCapability> = buildSet {
-        addAll(document?.capabilities.orEmpty())
-        val properties = item.propertyTokens()
-        if ("mathml" in properties) add(PublisherCapability.MATHML)
-        if ("svg" in properties) add(PublisherCapability.EMBEDDED_SVG)
-        if ("scripted" in properties) add(PublisherCapability.SCRIPTED)
-        if (item.mediaType.equals("image/svg+xml", ignoreCase = true)) {
-            add(PublisherCapability.STANDALONE_SVG)
-            remove(PublisherCapability.EMBEDDED_SVG)
-        }
-        if (rendition.primaryWritingMode == PrimaryWritingMode.VERTICAL_LR ||
-            rendition.primaryWritingMode == PrimaryWritingMode.VERTICAL_RL
-        ) {
-            add(PublisherCapability.VERTICAL_WRITING)
-        }
-    }
-
-    private fun resolvePublisherPath(baseDir: String, href: String): String? {
-        val rawPath = href.substringBefore('#').substringBefore('?').trim()
-        if (rawPath.isEmpty() || rawPath.startsWith("//") || URI_SCHEME.containsMatchIn(rawPath)) {
-            return null
-        }
-        val decoded = decodeUrlPath(rawPath) ?: return null
-        if ('\u0000' in decoded || '\\' in decoded || decoded.startsWith('/')) return null
-        val parts = baseDir.split('/').filter(String::isNotEmpty).toMutableList()
-        for (segment in decoded.split('/')) {
-            when (segment) {
-                "", "." -> Unit
-                ".." -> if (parts.isEmpty()) return null else parts.removeAt(parts.lastIndex)
-                else -> parts += segment
-            }
-        }
-        val resolved = parts.joinToString("/")
-        return resolved.takeIf(::isSafeArchivePath)
-    }
-
-    private fun isPublisherDocument(mediaType: String): Boolean =
-        mediaType == "application/xhtml+xml" ||
-                mediaType == "text/html" ||
-                mediaType == "image/svg+xml"
-
-    private fun isPublisherResource(mediaType: String): Boolean = when {
-        isPublisherDocument(mediaType) -> true
-        mediaType == "text/css" -> true
-        mediaType.startsWith("image/") -> true
-        isPublisherFont(mediaType) -> true
-        else -> false
-    }
-
-    private fun isPublisherFont(mediaType: String): Boolean =
-        mediaType.startsWith("font/") || mediaType in PUBLISHER_FONT_MEDIA_TYPES
-
-    private fun publisherResourceLimit(
-        mediaType: String,
-        limits: ReaderResourceLimits,
-    ): Long = when {
-        mediaType == "application/xhtml+xml" || mediaType == "text/html" -> limits.maxChapterBytes
-        mediaType == "text/css" -> limits.maxStylesheetBytes
-        isPublisherFont(mediaType) -> limits.maxFontBytes
-        else -> limits.maxImageBytes
+            .map { item -> SpineItem(item = item, linear = true) }
     }
 
 
@@ -1474,13 +1288,6 @@ object EpubParser {
     private fun ManifestItem.hasProperty(value: String): Boolean =
         properties.split(Regex("""\s+""")).any { it == value }
 
-    private fun ManifestItem.propertyTokens(): Set<String> = properties
-        .trim()
-        .split(Regex("""\s+"""))
-        .asSequence()
-        .map { it.lowercase(Locale.ROOT) }
-        .filter(String::isNotEmpty)
-        .toSet()
 
     private fun Element.localName(): String = normalName().substringAfterLast(':')
 
@@ -1582,18 +1389,4 @@ object EpubParser {
     )
     private val FB2_EPUB_NOTE_MARKER = Regex("""\[(?:\d+|[*†‡]+)]""")
     private val FB2_EPUB_NOTE_FILE = Regex("""ch2-\d+\.xhtml""", RegexOption.IGNORE_CASE)
-    private val URI_SCHEME = Regex("""^[A-Za-z][A-Za-z0-9+.-]*:""")
-    private val VERTICAL_WRITING_DECLARATION = Regex(
-        """(?i)(?:-[a-z]+-)?writing-mode\s*:\s*(?:vertical(?:-lr|-rl)?|tb-lr|tb-rl)\b""",
-    )
-    private val PUBLISHER_FONT_MEDIA_TYPES = setOf(
-        "application/font-sfnt",
-        "application/font-woff",
-        "application/vnd.ms-fontobject",
-        "application/vnd.ms-opentype",
-        "application/x-font-opentype",
-        "application/x-font-ttf",
-        "application/x-font-truetype",
-        "application/x-font-woff",
-    )
 }

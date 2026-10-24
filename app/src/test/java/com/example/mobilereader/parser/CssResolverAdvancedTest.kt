@@ -99,31 +99,6 @@ class CssResolverAdvancedTest {
 
 
     @Test
-    fun `calc mixes units into em space`() {
-        val r = resolver("p { text-indent: calc(1em + 16px); }")
-        val d = doc("<p id='x'>a</p>")
-        assertEquals(2f, r.computed(d.selectFirst("#x")!!).textIndentEm!!, 0.001f)
-    }
-
-    @Test
-    fun `calc multiplication needs a scalar and division works`() {
-        val r = resolver(
-            """
-            p { margin-top: calc(2 * 0.75em); }
-            h1 { margin-top: calc(3em / 2); }
-            div { margin-top: calc(1em * 2em); }
-            """.trimIndent(),
-        )
-        val d = doc("<div id='d'><h1 id='h'>t</h1><p id='p'>a</p></div>")
-        assertEquals(1.5f, r.computed(d.selectFirst("#p")!!).marginTopEm, 0.001f)
-
-
-        assertEquals(2.25f, r.computed(d.selectFirst("#h")!!).marginTopEm, 0.001f)
-
-        assertEquals(0f, r.computed(d.selectFirst("#d")!!).marginTopEm, 0.001f)
-    }
-
-    @Test
     fun `min max clamp evaluate`() {
         val r = resolver(
             """
@@ -137,7 +112,6 @@ class CssResolverAdvancedTest {
 
 
         assertEquals(1f, r.computed(d.selectFirst("#h")!!).fontSizeEm, 0.001f)
-        assertEquals(2f, r.computed(d.selectFirst("#b")!!).textIndentEm!!, 0.001f)
     }
 
     @Test
@@ -292,75 +266,6 @@ class CssResolverAdvancedTest {
         val d = doc("<p id='p'>a</p><h2 id='h'>t</h2>")
         assertEquals(1f, r.computed(d.selectFirst("#p")!!).fontSizeEm, 0.001f)
         assertEquals(1.32f, r.computed(d.selectFirst("#h")!!).fontSizeEm, 0.001f)
-    }
-
-    @Test
-    fun `calc with var works`() {
-        val r = resolver(
-            """
-            body { --base: 1em; }
-            p { text-indent: calc(var(--base) * 2); }
-            """.trimIndent(),
-        )
-        val d = doc("<body><p id='x'>a</p></body>")
-        assertEquals(2f, r.computed(d.selectFirst("#x")!!).textIndentEm!!, 0.001f)
-    }
-
-    @Test
-    fun `margin shorthand and longhands share importance specificity and source order`() {
-        val r = resolver(
-            """
-            #within-a { margin-left: 1em; margin: 2em; }
-            #within-b { margin: 2em; margin-left: 1em; }
-
-            .rule-a { margin-left: 1em; }
-            .rule-a { margin: 2em; }
-            .rule-b { margin: 2em; }
-            .rule-b { margin-left: 1em; }
-
-            #specific-a.target { margin: 3em; }
-            #specific-a { margin-left: 1em; }
-            #specific-b { margin: 3em; }
-            #specific-b.target { margin-left: 1em; }
-
-            #important-a { margin: 2em !important; margin-left: 1em; }
-            #important-b { margin: 2em; margin-left: 1em !important; }
-
-            #variable { --publisher-margin: 1em 2em 3em 4em;
-                        margin: var(--publisher-margin); }
-            """.trimIndent(),
-        )
-        val d = doc(
-            """
-            <div id='within-a'>a</div><div id='within-b'>b</div>
-            <div id='rule-a' class='rule-a'>a</div><div id='rule-b' class='rule-b'>b</div>
-            <div id='specific-a' class='target'>a</div>
-            <div id='specific-b' class='target'>b</div>
-            <div id='important-a'>a</div><div id='important-b'>b</div>
-            <div id='variable'>v</div>
-            """.trimIndent(),
-        )
-
-        fun start(id: String) = r.computed(d.selectFirst("#$id")!!).marginStartEm
-
-
-        assertEquals(2f, start("within-a"), 0.001f)
-        assertEquals(1f, start("within-b"), 0.001f)
-        assertEquals(2f, start("rule-a"), 0.001f)
-        assertEquals(1f, start("rule-b"), 0.001f)
-
-        assertEquals(3f, start("specific-a"), 0.001f)
-        assertEquals(1f, start("specific-b"), 0.001f)
-
-        assertEquals(2f, start("important-a"), 0.001f)
-        assertEquals(1f, start("important-b"), 0.001f)
-
-
-        val variable = r.computed(d.selectFirst("#variable")!!)
-        assertEquals(1f, variable.marginTopEm, 0.001f)
-        assertEquals(2f, variable.marginEndEm, 0.001f)
-        assertEquals(3f, variable.marginBottomEm, 0.001f)
-        assertEquals(4f, variable.marginStartEm, 0.001f)
     }
 
     @Test
@@ -519,24 +424,6 @@ class CssResolverAdvancedTest {
 
 
     @Test
-    fun `absolute and half-em units convert`() {
-        val r = resolver(
-            """
-            p { margin-top: 1pc; }
-            h1 { margin-top: 0.5in; }
-            h2 { margin-top: 10mm; }
-            h3 { text-indent: 4ch; }
-            """.trimIndent(),
-        )
-        val d = doc("<p id='p'>a</p><h1 id='h1'>t</h1><h2 id='h2'>t</h2><h3 id='h3'>t</h3>")
-        assertEquals(1f, r.computed(d.selectFirst("#p")!!).marginTopEm, 0.001f)
-        assertEquals(3f, r.computed(d.selectFirst("#h1")!!).marginTopEm, 0.001f)
-        assertEquals(2.3622f, r.computed(d.selectFirst("#h2")!!).marginTopEm, 0.01f)
-
-        assertEquals(2.36f, r.computed(d.selectFirst("#h3")!!).textIndentEm!!, 0.001f)
-    }
-
-    @Test
     fun `viewport units map to the content-width convention`() {
         val r = resolver(
             """
@@ -546,8 +433,6 @@ class CssResolverAdvancedTest {
             """.trimIndent(),
         )
         val d = doc("<p id='p'>a</p><h1 id='h1'>t</h1><h2 id='h2'>t</h2>")
-        assertEquals(3f, r.computed(d.selectFirst("#p")!!).textIndentEm!!, 0.001f)
-        assertEquals(1f, r.computed(d.selectFirst("#h1")!!).marginTopEm, 0.001f)
 
         assertEquals(3f, r.computed(d.selectFirst("#h2")!!).fontSizeEm, 0.001f)
     }

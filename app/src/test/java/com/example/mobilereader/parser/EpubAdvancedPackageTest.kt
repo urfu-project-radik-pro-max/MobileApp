@@ -291,26 +291,6 @@ class EpubAdvancedPackageTest {
         assertTrue(content.chapters[0].elements.none { it.visibleText() == "Second body." })
         assertTrue(content.chapters[1].elements.any { it.visibleText() == "Second body." })
 
-        val firstBox = content.chapters[0].publisherBoxes.single {
-            it.style.backgroundColorArgb != null
-        }
-        val secondBox = content.chapters[1].publisherBoxes.single {
-            it.style.backgroundColorArgb != null
-        }
-        assertEquals(0, firstBox.startElement)
-        assertEquals(content.chapters[0].elements.size, firstBox.endElementExclusive)
-        assertTrue(firstBox.drawStart)
-        assertTrue(!firstBox.drawEnd)
-        assertEquals(0, secondBox.startElement)
-        assertEquals(content.chapters[1].elements.size, secondBox.endElementExclusive)
-        assertTrue(!secondBox.drawStart)
-        assertTrue(secondBox.drawEnd)
-        assertEquals(firstBox.id, secondBox.id)
-        val childParagraph = content.chapters[0].elements
-            .filterIsInstance<ContentElement.Paragraph>()
-            .first()
-        assertEquals(null, childParagraph.block?.backgroundColorArgb)
-
         val target = content.linkTargets.getValue("OEBPS/chapter.xhtml#два")
         assertEquals(1, target.first)
         assertEquals("Heading two", content.chapters[target.first].elements[target.second].visibleText())
@@ -376,10 +356,7 @@ class EpubAdvancedPackageTest {
             listOf("Main leaf.", "Continued one.", "Continued two."),
             chapter.elements.mapNotNull { it.visibleText() },
         )
-        val box = chapter.publisherBoxes.single()
-        assertEquals(1, box.startElement)
-        assertEquals(3, box.endElementExclusive)
-        assertTrue(box.id.startsWith("OEBPS/continuation.xhtml@"))
+
     }
 
     @Test
@@ -409,11 +386,6 @@ class EpubAdvancedPackageTest {
 
         assertEquals(BlockAlign.RIGHT, block.align)
         assertEquals(true, block.italic)
-        val linkedBox = document.publisherBoxes.single()
-        assertEquals(target.elementIndex, linkedBox.startElement)
-        assertEquals(target.elementIndex + 1, linkedBox.endElementExclusive)
-        assertEquals(0.5f, linkedBox.style.paddingTopEm, 0.001f)
-
         val source = content.chapters.single().elements
             .filterIsInstance<ContentElement.Paragraph>().single()
         assertEquals(

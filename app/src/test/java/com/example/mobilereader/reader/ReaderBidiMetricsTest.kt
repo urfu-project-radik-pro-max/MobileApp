@@ -16,7 +16,7 @@ import org.junit.Test
 
 class ReaderBidiMetricsTest {
 
-    private val settings = ReaderSettings(bookStyles = true)
+    private val settings = ReaderSettings(justify = false)
 
     @Test
     fun `explicit and automatic base directions reach compose`() {
@@ -46,7 +46,7 @@ class ReaderBidiMetricsTest {
     }
 
     @Test
-    fun `logical alignments follow direction while physical alignments do not flip`() {
+    fun `author alignment is applied without changing RTL direction`() {
         fun align(value: BlockAlign) = ReaderMetrics.textStyle(
             ContentElement.Paragraph(
                 AnnotatedString("שלום"),
@@ -63,24 +63,24 @@ class ReaderBidiMetricsTest {
     }
 
     @Test
-    fun `logical indents map to physical sides from book text not ui locale`() {
+    fun `reading margins do not displace right to left text`() {
         val rtl = ContentElement.Paragraph(
             AnnotatedString("(2026) שלום"),
-            block = BlockStyle(indentStartEm = 2f, indentEndEm = 1f),
+            block = BlockStyle(),
         )
         val ltr = ContentElement.Paragraph(
             AnnotatedString("(2026) Hello"),
-            block = BlockStyle(indentStartEm = 2f, indentEndEm = 1f),
+            block = BlockStyle(),
         )
 
         assertEquals(true, ReaderMetrics.isRtl(rtl))
         assertEquals(false, ReaderMetrics.isRtl(ltr))
         assertEquals(
-            20.dp to 40.dp,
+            0.dp to 0.dp,
             ReaderMetrics.physicalHorizontalInsets(rtl, 300.dp, 20f),
         )
         assertEquals(
-            40.dp to 20.dp,
+            0.dp to 0.dp,
             ReaderMetrics.physicalHorizontalInsets(ltr, 300.dp, 20f),
         )
     }
@@ -96,26 +96,22 @@ class ReaderBidiMetricsTest {
     }
 
     @Test
-    fun `physical css insets never mirror while logical insets follow text`() {
+    fun `simple reading margins are independent of text direction`() {
         fun element(direction: BookTextDirection) = ContentElement.Paragraph(
             AnnotatedString("2026"),
             block = BlockStyle(
                 direction = direction,
-                indentStartEm = 2f,
-                indentEndEm = 1f,
-                indentLeftEm = 3f,
-                indentRightEm = 4f,
             ),
         )
 
         assertEquals(
-            100.dp to 100.dp,
+            0.dp to 0.dp,
             ReaderMetrics.physicalHorizontalInsets(
                 element(BookTextDirection.LTR), 400.dp, 20f,
             ),
         )
         assertEquals(
-            80.dp to 120.dp,
+            0.dp to 0.dp,
             ReaderMetrics.physicalHorizontalInsets(
                 element(BookTextDirection.RTL), 400.dp, 20f,
             ),

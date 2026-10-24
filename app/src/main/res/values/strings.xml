@@ -51,12 +51,8 @@
     <string name="reader_set_by_book">Set by the book</string>
     <string name="reader_font_from_book">Publisher\'s formatting</string>
     <string name="reader_fonts_in_book">Fonts inside this book</string>
-    <string name="reader_drop_caps">Decorated initials</string>
-    <string name="reader_drop_caps_subtitle">Large opening letters where the book draws them</string>
     <string name="reader_invert_images">Auto-invert pictures</string>
     <string name="reader_invert_images_subtitle">Invert scans automatically in the dark theme</string>
-    <string name="reader_book_styles">Publisher\'s formatting</string>
-    <string name="reader_book_styles_subtitle">Fonts, alignment and spacing as designed in the book</string>
     <string name="selection_copy">Copy</string>
     <string name="selection_quote">Quote</string>
     <string name="selection_translate">Translate</string>

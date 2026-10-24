@@ -18,19 +18,12 @@ import com.example.mobilereader.data.model.BIDI_TAG
 import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.EXTERNAL_LINK_TAG
 import com.example.mobilereader.data.model.FOOTNOTE_TAG
-import com.example.mobilereader.data.model.FirstLetterStyle
-import com.example.mobilereader.data.model.FloatImage
 import com.example.mobilereader.data.model.LINK_TAG
 import com.example.mobilereader.data.model.InlineBidiMode
 import com.example.mobilereader.data.model.NoteDocument
 import com.example.mobilereader.data.model.ParagraphStyle
-import com.example.mobilereader.data.model.PublisherBoxSpan
-import com.example.mobilereader.data.model.PublisherBoxStyle
-import com.example.mobilereader.data.model.PublisherClear
-import com.example.mobilereader.data.model.PublisherFloatSide
 import com.example.mobilereader.data.model.TableCell
 import com.example.mobilereader.data.model.TableRow
-import com.example.mobilereader.data.model.slicePublisherBoxSpans
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
@@ -48,8 +41,6 @@ class HtmlMapper(
     private val maxStructureDepth: Int = DEFAULT_HTML_STRUCTURE_DEPTH,
 
     private val expansionBudget: HtmlExpansionBudget = HtmlExpansionBudget(),
-
-    private val publisherBoxIdPrefix: String = "document",
 ) {
 
     init {
@@ -64,19 +55,6 @@ class HtmlMapper(
     private var pendingInlineOwner: Element? = null
 
 
-    val publisherBoxes = mutableListOf<PublisherBoxSpan>()
-
-    private data class OpenPublisherBox(
-        val id: String,
-        val parentId: String?,
-        val startElement: Int,
-        val style: PublisherBoxStyle,
-        val floatSide: PublisherFloatSide?,
-        val clear: PublisherClear,
-    )
-
-    private val publisherBoxStack = mutableListOf<String>()
-    private var publisherBoxSequence = 0
 
 
     private var headingLevel: Int? = null
@@ -116,13 +94,8 @@ class HtmlMapper(
         if (css == null && (body.hasAttr("style") || body.selectFirst("[style]") != null)) {
             css = CssResolver(emptyList())
         }
-        val bodyBox = beginPublisherBox(body, allowRoot = true)
-        try {
-            walk(body, quote = false)
-            flushPending(quote = false)
-        } finally {
-            endPublisherBox(bodyBox)
-        }
+        walk(body, quote = false)
+        flushPending(quote = false)
         return out.toList()
     }
 
@@ -157,11 +130,6 @@ class HtmlMapper(
                         if (out.size > noteStart) {
                             val document = NoteDocument(
                                 elements = out.subList(noteStart, out.size).toList(),
-                                publisherBoxes = slicePublisherBoxSpans(
-                                    spans = publisherBoxes,
-                                    startElement = noteStart,
-                                    endElementExclusive = out.size,
-                                ),
                             )
                             buildList {
                                 node.attr("id").takeIf(String::isNotEmpty)?.let(::add)
@@ -212,17 +180,10 @@ class HtmlMapper(
     private fun walkElement(node: Element, quote: Boolean, depth: Int) {
 
 
-        val opensFlowBox = node.normalName() !in IMAGE_TAGS &&
-                isPublisherBoxElement(node, allowRoot = false)
-
-
-        if (opensFlowBox) flushPending(quote)
-        val openBox = if (opensFlowBox) beginPublisherBox(node) else null
-        try {
-            walkElementContent(node, quote, depth)
-        } finally {
-            endPublisherBox(openBox)
-        }
+        val opensFlowBoundary = node.normalName() !in IMAGE_TAGS &&
+                isFlowBoundary(node)
+        if (opensFlowBoundary) flushPending(quote)
+        walkElementContent(node, quote, depth)
     }
 
     private fun walkElementContent(node: Element, quote: Boolean, depth: Int) {
@@ -415,94 +376,14 @@ class HtmlMapper(
     }
 
 
-    private fun beginPublisherBox(
-        element: Element,
-        allowRoot: Boolean = false,
-    ): OpenPublisherBox? {
-        if (!isPublisherBoxElement(element, allowRoot)) return null
-        val resolver = css ?: return null
-        val computed = resolver.computed(element)
-        if (computed.hidden) return null
-        val style = resolver.publisherBoxStyle(element) ?: PublisherBoxStyle.DEFAULT
-        val floatSide = when (computed.floatSide) {
-            "left" -> PublisherFloatSide.LEFT
-            "right" -> PublisherFloatSide.RIGHT
-            else -> null
-        }
-        val clear = when (computed.clear) {
-            "left" -> PublisherClear.LEFT
-            "right" -> PublisherClear.RIGHT
-            "both" -> PublisherClear.BOTH
-            else -> PublisherClear.NONE
-        }
-        if (style.isDefault && floatSide == null && clear == PublisherClear.NONE) return null
-
-        val prefix = publisherBoxIdPrefix.ifBlank { "document" }
-        val open = OpenPublisherBox(
-            id = "$prefix:publisher-box-${publisherBoxSequence++}",
-            parentId = publisherBoxStack.lastOrNull(),
-            startElement = out.size,
-            style = style,
-            floatSide = floatSide,
-            clear = clear,
-        )
-        publisherBoxStack += open.id
-        return open
-    }
-
-    private fun endPublisherBox(open: OpenPublisherBox?) {
-        if (open == null) return
-        check(publisherBoxStack.removeAt(publisherBoxStack.lastIndex) == open.id) {
-            "Publisher box stack is not properly nested"
-        }
-        val end = out.size
-        if (end == open.startElement) {
-
-
-            if (open.clear != PublisherClear.NONE) {
-                publisherBoxes += PublisherBoxSpan(
-                    id = open.id,
-                    parentId = open.parentId,
-                    startElement = end,
-                    endElementExclusive = end,
-                    clear = open.clear,
-                )
-            } else {
-
-
-                for (index in publisherBoxes.indices) {
-                    val span = publisherBoxes[index]
-                    if (span.parentId == open.id) {
-                        publisherBoxes[index] = span.copy(parentId = open.parentId)
-                    }
-                }
-            }
-            return
-        }
-        publisherBoxes += PublisherBoxSpan(
-            id = open.id,
-            parentId = open.parentId,
-            startElement = open.startElement,
-            endElementExclusive = end,
-            style = open.style,
-            floatSide = open.floatSide,
-            clear = open.clear,
-        )
-    }
-
-    private fun isPublisherBoxElement(element: Element, allowRoot: Boolean): Boolean {
+    private fun isFlowBoundary(element: Element): Boolean {
         val tag = element.normalName()
-        if ((!allowRoot && tag in ROOT_TAGS) ||
-            (tag in NON_BLOCK_TAGS && tag !in IMAGE_TAGS)
-        ) {
-            return false
-        }
-        return (allowRoot && tag in ROOT_TAGS) ||
-                tag in PUBLISHER_BOX_TAGS ||
+        if (tag in ROOT_TAGS || tag in NON_BLOCK_TAGS) return false
+        return tag in FLOW_BOUNDARY_TAGS ||
                 (isMathElement(element) && isDisplayMath(element)) ||
-                element.selectFirst(BLOCK_PROBE) != null
+                element.selectFirst(BLOCK_PROBE) != null ||
+                css?.computed(element)?.display in setOf("block", "list-item", "table")
     }
-
 
     private fun flushPending(quote: Boolean) {
         if (pendingInline.isEmpty()) return
@@ -525,23 +406,18 @@ class HtmlMapper(
                 out += ContentElement.Paragraph(
                     builder.build(),
                     if (quote) ParagraphStyle.QUOTE else ParagraphStyle.NORMAL,
-                    looseBlockTextStyle(owner, withFirstLetter = true),
+                    looseBlockTextStyle(owner),
                 )
             }
         }
     }
 
 
-    private fun looseBlockTextStyle(
-        owner: Element?,
-        withFirstLetter: Boolean = false,
-    ): BlockStyle {
-        val authored = owner?.let { blockStyleFor(it, withFirstLetter) }
+    private fun looseBlockTextStyle(owner: Element?): BlockStyle {
+        val authored = owner?.let(::blockStyleFor)
         val base = authored ?: BlockStyle()
         return base.copy(
             firstLineIndent = base.firstLineIndent ?: false,
-            spaceBeforeSpecified = true,
-            spaceAfterSpecified = true,
         )
     }
 
@@ -563,11 +439,9 @@ class HtmlMapper(
         val builder = InlineTextBuilder()
         val preformatted = element.normalName() == "pre"
         if (preformatted) builder.pushStyle(SpanStyle(fontFamily = FontFamily.Monospace))
-        var isListItem = false
         if (element.normalName() == "li") {
             val context = listStack.lastOrNull()
             if (context != null) {
-                isListItem = true
                 if (context.ordered) {
                     element.attr("value").toIntOrNull()?.let { context.nextIndex = it }
                 }
@@ -576,11 +450,6 @@ class HtmlMapper(
             } else {
                 builder.text("• ")
             }
-        }
-        val explicitInitial = if (!preformatted && !isListItem) {
-            explicitFloatedInitial(element)
-        } else {
-            null
         }
 
         appendGeneratedRun(builder, generated(element, after = false))
@@ -592,53 +461,18 @@ class HtmlMapper(
                 child,
                 builder,
                 preserveWhitespace = preformatted,
-                suppressedStyleElement = explicitInitial?.element,
             )
         }
         appendGeneratedRun(builder, generated(element, after = true))
         if (preformatted) builder.pop()
 
 
-        var floatImage: FloatImage? = null
-        var floatElement: Element? = null
-        val resolver = css
-        if (resolver != null) {
-            for (img in element.select("img")) {
-                val computed = resolver.computed(img)
-                val side = computed.floatSide ?: continue
-                val frac = computed.widthFrac
-                    ?: computed.widthEm?.let { it / 30f }
-                    ?: 0.33f
-                if (frac > 0.45f) continue
-                val path = resolveImage(img.attr("src")) ?: continue
-                floatImage = FloatImage(
-                    path = path,
-                    widthFrac = frac.coerceIn(0.1f, 0.45f),
-                    left = side == "left",
-                    altText = imageAlt(img),
-                )
-                floatElement = img
-                break
-            }
-        }
         val hasText = !builder.isBlank
         if (hasText) {
-            var block = blockStyleFor(element, withFirstLetter = true)
-            if (isListItem) {
+            var block = blockStyleFor(element)
 
 
-                val base = block ?: BlockStyle()
-                block = base.copy(
-                    indentStartEm = base.indentStartEm + 1.2f * (listStack.size - 1),
-                    firstLineIndent = false,
-                )
-            }
-            if (floatImage != null) {
-                block = (block ?: BlockStyle()).copy(floatImage = floatImage)
-            }
-            if (explicitInitial != null) {
-                block = (block ?: BlockStyle()).copy(firstLetter = explicitInitial.style)
-            }
+
             if (preformatted) {
                 block = (block ?: BlockStyle()).copy(
                     fontFamily = "monospace",
@@ -650,23 +484,19 @@ class HtmlMapper(
                 if (quote) ParagraphStyle.QUOTE else ParagraphStyle.NORMAL,
                 block,
             )
-        } else {
-            floatElement = null
         }
 
 
         val inlineRefs = builder.imageRefs.toSet()
         element.select("img").forEach { image ->
             val path = resolveImage(image.attr("src"))
-            if (image !== floatElement &&
-                (!hasText || isBlockLikeMedia(image) || path != null && path !in inlineRefs)
-            ) {
+            if (!hasText || isBlockLikeMedia(image) || path != null && path !in inlineRefs) {
                 emitImage(image.attr("src"), image)
             }
         }
         element.select("svg").forEach { svg ->
             val path = resolveSvg(svg)
-            if (!hasText || path !in inlineRefs) path?.let { out += ContentElement.Image(it) }
+            if (!hasText || path !in inlineRefs) path?.let { out += imageElement(it, svg) }
         }
         element.children()
             .filter { it.normalName() in NESTED_LIST_TAGS }
@@ -698,7 +528,7 @@ class HtmlMapper(
         }
         element.select("svg").forEach { svg ->
             val path = resolveSvg(svg)
-            if (!hasText || path !in inlineRefs) path?.let { out += ContentElement.Image(it) }
+            if (!hasText || path !in inlineRefs) path?.let { out += imageElement(it, svg) }
         }
     }
 
@@ -750,7 +580,7 @@ class HtmlMapper(
         }
         node.select("svg").forEach { svg ->
             val path = resolveSvg(svg)
-            if (!hasText || path !in inlineRefs) path?.let { out += ContentElement.Image(it) }
+            if (!hasText || path !in inlineRefs) path?.let { out += imageElement(it, svg) }
         }
     }
 
@@ -824,12 +654,6 @@ class HtmlMapper(
                 val builder = InlineTextBuilder()
                 appendCellContent(cellElement, builder)
                 val header = cellElement.normalName() == "th"
-                val cellComputed = css?.computed(cellElement)
-                val cellPublisherBox = css?.publisherBoxStyle(cellElement)
-                    ?: PublisherBoxStyle.DEFAULT.takeIf {
-                        cellComputed?.paddingSpecified == true ||
-                                cellComputed?.borderSpecified == true
-                    }
                 TableCell(
                     text = builder.build(),
                     colSpan = cellElement.attr("colspan").toIntOrNull()?.coerceIn(1, 10) ?: 1,
@@ -837,9 +661,6 @@ class HtmlMapper(
                     align = cellAlign(cellElement, header),
                     header = header,
                     block = tableCellBlockStyle(cellElement, table),
-                    publisherBox = cellPublisherBox,
-                    publisherPaddingSpecified = cellComputed?.paddingSpecified == true,
-                    publisherBorderSpecified = cellComputed?.borderSpecified == true,
                 )
             }
             rows += TableRow(cells, isHeader = inHead || cells.all { it.header })
@@ -881,23 +702,18 @@ class HtmlMapper(
     }
 
     private fun emitTableCaption(caption: Element) {
-        val openBox = beginPublisherBox(caption)
-        try {
-            val builder = InlineTextBuilder()
-            appendChildrenInline(caption, builder)
-            if (!builder.isBlank) {
-                out += ContentElement.Paragraph(
-                    builder.build(),
-                    ParagraphStyle.NORMAL,
-                    (blockStyleFor(caption) ?: BlockStyle.DEFAULT).copy(
-                        align = BlockAlign.CENTER,
-                        italic = true,
-                        firstLineIndent = false,
-                    ),
-                )
-            }
-        } finally {
-            endPublisherBox(openBox)
+        val builder = InlineTextBuilder()
+        appendChildrenInline(caption, builder)
+        if (!builder.isBlank) {
+            out += ContentElement.Paragraph(
+                builder.build(),
+                ParagraphStyle.NORMAL,
+                (blockStyleFor(caption) ?: BlockStyle.DEFAULT).copy(
+                    align = BlockAlign.CENTER,
+                    italic = true,
+                    firstLineIndent = false,
+                ),
+            )
         }
     }
 
@@ -1064,12 +880,7 @@ class HtmlMapper(
     }
 
     private fun emitImage(src: String, node: Element? = null) {
-        val openBox = node?.let { beginPublisherBox(it) }
-        try {
-            emitImageContent(src, node)
-        } finally {
-            endPublisherBox(openBox)
-        }
+        emitImageContent(src, node)
     }
 
     private fun emitImageContent(src: String, node: Element?) {
@@ -1085,15 +896,29 @@ class HtmlMapper(
         }
 
 
+        out += imageElement(path, node, alt)
+    }
+
+    private fun imageElement(path: String, node: Element?, altText: String? = null): ContentElement.Image {
         val computed = node?.let { css?.computed(it) }
-        out += ContentElement.Image(
+        val widthAttribute = node?.attr("width")?.trim().orEmpty()
+        val heightAttribute = node?.attr("height")?.trim().orEmpty()
+        val widthFraction = widthAttribute.removeSuffix("%")
+            .toFloatOrNull()?.takeIf { widthAttribute.endsWith("%") && it.isFinite() && it > 0f }
+            ?.div(100f)?.coerceAtMost(1f)
+        val widthEm = widthAttribute.removeSuffix("px")
+            .toFloatOrNull()?.takeIf { !widthAttribute.endsWith("%") && it.isFinite() && it > 0f }
+            ?.div(16f)
+        val heightEm = heightAttribute.removeSuffix("px")
+            .toFloatOrNull()?.takeIf { it.isFinite() && it > 0f }
+            ?.div(16f)
+        val cssWidthSpecified = computed?.widthFrac != null || computed?.widthEm != null
+        return ContentElement.Image(
             path = path,
-            widthFrac = computed?.widthFrac,
-            widthEm = computed?.widthEm,
-            heightEm = computed?.heightEm,
-            altText = alt,
-            spaceBeforeSpecified = computed?.marginTopSpecified == true,
-            spaceAfterSpecified = computed?.marginBottomSpecified == true,
+            altText = altText,
+            widthFrac = if (cssWidthSpecified) computed.widthFrac else widthFraction,
+            widthEm = if (cssWidthSpecified) computed.widthEm else widthEm,
+            heightEm = computed?.heightEm ?: heightEm,
         )
     }
 
@@ -1103,62 +928,8 @@ class HtmlMapper(
             .trim()
             .takeIf { it.isNotEmpty() }
 
-    private fun isBlockLikeMedia(node: Element): Boolean {
-        val computed = css?.computed(node) ?: return false
-        return computed.floatSide != null ||
-                (computed.widthFrac ?: 0f) > 0.45f ||
-                (computed.widthEm ?: 0f) > 12f ||
-                (computed.heightEm ?: 0f) > 3f
-    }
-
-    private class ExplicitFloatedInitial(
-        val element: Element,
-        val style: FirstLetterStyle,
-    )
-
-
-    private fun explicitFloatedInitial(paragraph: Element): ExplicitFloatedInitial? {
-        val resolver = css ?: return null
-
-
-        if (resolver.generated(paragraph, after = false) != null) return null
-
-        val candidate = paragraph.childNodes().firstNotNullOfOrNull { node ->
-            when (node) {
-                is TextNode -> if (node.isBlank) null else return null
-                is Element -> {
-                    if (resolver.computed(node).hidden) null else node
-                }
-
-                else -> null
-            }
-        } ?: return null
-        if (candidate.normalName() !in EXPLICIT_INITIAL_TAGS) return null
-        if (candidate.childNodes().any { it !is TextNode }) return null
-        if (resolver.generated(candidate, after = false) != null ||
-            resolver.generated(candidate, after = true) != null
-        ) {
-            return null
-        }
-
-        val raw = candidate.childNodes()
-            .filterIsInstance<TextNode>()
-            .joinToString(separator = "") { it.wholeText }
-        val visible = raw.replace(INLINE_WHITESPACE, " ").trim()
-        if (visible.isEmpty() || ' ' in visible) return null
-        val codePoints = visible.codePointCount(0, visible.length)
-        if (codePoints !in 1..3 || visible.codePoints().noneMatch(Character::isLetter)) return null
-
-        val style = resolver.floatedTextInitial(candidate, paragraph, visible.length)
-            ?.let { resolved ->
-                resolved.copy(
-                    language = languageFor(candidate),
-                    direction = resolved.direction ?: attributeDirection(candidate),
-                )
-            }
-            ?: return null
-        return ExplicitFloatedInitial(candidate, style)
-    }
+    private fun isBlockLikeMedia(node: Element): Boolean =
+        css?.computed(node)?.display == "block"
 
     private fun emitMissingImageAlt(alt: String?) {
         if (alt == null) return
@@ -1172,14 +943,12 @@ class HtmlMapper(
 
     private fun emitSvg(source: Element) {
         resolveSvg(source)?.let {
-            val computed = css?.computed(source)
-            out += ContentElement.Image(
+            out += imageElement(
                 path = it,
+                node = source,
                 altText = source.attr("aria-label").ifBlank {
                     source.selectFirst("title")?.text().orEmpty()
                 }.trim().takeIf(String::isNotEmpty),
-                spaceBeforeSpecified = computed?.marginTopSpecified == true,
-                spaceAfterSpecified = computed?.marginBottomSpecified == true,
             )
         }
     }
@@ -1224,7 +993,7 @@ class HtmlMapper(
     }
 
 
-    private fun blockStyleFor(element: Element, withFirstLetter: Boolean = false): BlockStyle? {
+    private fun blockStyleFor(element: Element): BlockStyle? {
         val resolver = css
         if (resolver == null) {
             val style = BlockStyle(
@@ -1239,21 +1008,6 @@ class HtmlMapper(
             return if (style.isDefault) null else style
         }
         val computed = resolver.computed(element)
-
-        var pageBreak = computed.pageBreakBefore
-
-
-        var child: Element = element
-        var ancestor = element.parent()
-        while (ancestor != null && ancestor.normalName() !in ROOT_TAGS) {
-            val box = resolver.computed(ancestor)
-            if (firstBlockChild(ancestor) === child) {
-                pageBreak = pageBreak || box.pageBreakBefore
-            }
-            child = ancestor
-            ancestor = ancestor.parent()
-        }
-
 
         val align = when {
             computed.textAlign == "center" -> BlockAlign.CENTER
@@ -1275,17 +1029,11 @@ class HtmlMapper(
             fontScale = computedFontScale.takeIf {
                 it !in 0.999f..1.001f || element.normalName() in HEADING_TAGS
             },
-            firstLineIndent = computed.textIndentEm?.let { it > 0.05f },
-            firstLineIndentEm = computed.textIndentEm,
             fontFamily = computed.fontFamilyName,
             lineHeightMult = computed.lineHeightMult,
             hyphens = computed.hyphensAuto,
 
 
-            spaceBeforeSpecified = computed.marginTopSpecified,
-            spaceAfterSpecified = computed.marginBottomSpecified,
-            pageBreakBefore = pageBreak,
-            firstLetter = if (withFirstLetter) resolver.firstLetter(element) else null,
             language = languageFor(element),
             direction = when (computed.direction) {
                 "ltr" -> BookTextDirection.LTR
@@ -1357,10 +1105,6 @@ class HtmlMapper(
         return run.takeIf { expansionBudget.acceptGenerated(it.text.length) }
     }
 
-    private fun firstBlockChild(container: Element): Element? =
-        container.children().firstOrNull { it.normalName() !in NON_BLOCK_TAGS }
-
-
     private fun titleClassLevel(element: Element): Int? {
         for (name in element.classNames()) {
             val match = TITLE_CLASS.matchEntire(name) ?: continue
@@ -1400,7 +1144,6 @@ class HtmlMapper(
         out: InlineTextBuilder,
         preserveWhitespace: Boolean = false,
         depth: Int = 0,
-        suppressedStyleElement: Element? = null,
     ) {
         for (child in element.childNodes()) {
             appendInline(
@@ -1408,7 +1151,6 @@ class HtmlMapper(
                 out,
                 preserveWhitespace,
                 depth + 1,
-                suppressedStyleElement,
             )
         }
     }
@@ -1427,7 +1169,6 @@ class HtmlMapper(
         out: InlineTextBuilder,
         preserveWhitespace: Boolean = false,
         depth: Int = 0,
-        suppressedStyleElement: Element? = null,
     ) {
         when (node) {
             is TextNode -> if (preserveWhitespace) {
@@ -1475,11 +1216,7 @@ class HtmlMapper(
                         }
 
                         "svg" -> {
-                            val computed = css?.computed(node)
-                            val blockLike = (computed?.widthFrac ?: 0f) > 0.45f ||
-                                    (computed?.widthEm ?: 0f) > 12f ||
-                                    (computed?.heightEm ?: 0f) > 3f
-                            if (!blockLike) {
+                            if (!isBlockLikeMedia(node)) {
                                 resolveSvg(node)?.let { path ->
                                     val alt = node.attr("aria-label").ifBlank {
                                         node.selectFirst("title")?.text().orEmpty()
@@ -1491,7 +1228,7 @@ class HtmlMapper(
 
 
                         "ruby" -> appendChildrenInline(
-                            node, out, preserveWhitespace, depth, suppressedStyleElement,
+                            node, out, preserveWhitespace, depth
                         )
 
                         "rp" -> Unit
@@ -1503,7 +1240,7 @@ class HtmlMapper(
                                 ),
                             )
                             appendChildrenInline(
-                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                node, out, preserveWhitespace, depth
                             )
                             out.pop()
                         }
@@ -1518,7 +1255,7 @@ class HtmlMapper(
                                 out.text(open)
                             }
                             appendChildrenInline(
-                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                node, out, preserveWhitespace, depth
                             )
                             if (generatedAfter != null) {
                                 appendGeneratedRun(out, generatedAfter)
@@ -1532,7 +1269,7 @@ class HtmlMapper(
                             val style = inlineStyleFor(node)
                             if (style != null) out.pushStyle(style)
                             appendChildrenInline(
-                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                node, out, preserveWhitespace, depth
                             )
                             if (style != null) out.pop()
                             out.pop()
@@ -1550,32 +1287,28 @@ class HtmlMapper(
                                     key,
                                 )
                                 appendChildrenInline(
-                                    node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                    node, out, preserveWhitespace, depth
                                 )
                                 out.pop()
                             } else if (safeExternalHref(href)) {
                                 out.pushAnnotation(EXTERNAL_LINK_TAG, href)
                                 appendChildrenInline(
-                                    node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                    node, out, preserveWhitespace, depth
                                 )
                                 out.pop()
                             } else {
                                 appendChildrenInline(
-                                    node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                    node, out, preserveWhitespace, depth
                                 )
                             }
                         }
 
                         else -> {
-                            val style = if (node === suppressedStyleElement) {
-                                null
-                            } else {
-                                inlineStyleFor(node)
-                            }
+                            val style = inlineStyleFor(node)
                             if (style != null) out.pushStyle(style)
                             appendGeneratedRun(out, generated(node, after = false))
                             appendChildrenInline(
-                                node, out, preserveWhitespace, depth, suppressedStyleElement,
+                                node, out, preserveWhitespace, depth
                             )
                             appendGeneratedRun(out, generated(node, after = true))
                             if (style != null) out.pop()
@@ -1913,9 +1646,7 @@ class HtmlMapper(
         }
     }
 
-    private companion object {
-        val EXPLICIT_INITIAL_TAGS = setOf("span", "font", "b", "strong", "i", "em")
-        val INLINE_WHITESPACE = Regex("[\\s\\u00A0]+")
+    internal companion object {
         const val DEFAULT_HTML_STRUCTURE_DEPTH = 256
         val HEADING_TAGS = setOf("h1", "h2", "h3", "h4", "h5", "h6")
         const val BLOCK_PROBE =
@@ -1926,7 +1657,7 @@ class HtmlMapper(
             "small", "big", "code", "br", "img", "ruby", "rt", "rp", "rb",
         )
         val IMAGE_TAGS = setOf("img", "image")
-        val PUBLISHER_BOX_TAGS = setOf(
+        val FLOW_BOUNDARY_TAGS = setOf(
             "p", "li", "dt", "dd", "pre",
             "h1", "h2", "h3", "h4", "h5", "h6",
             "levelhd", "hd", "bridgehead", "doctitle", "covertitle",
