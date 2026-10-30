@@ -11,7 +11,7 @@
     <string name="reader_brightness_gesture">Яркость жестом у левого края</string>
     <string name="selection_translate">Перевести</string>
     <string name="contextual_translation_title">Контекстный перевод</string>
-    <string name="contextual_translation_page_count_description">Страницы контекста: текущая и предыдущие. В режиме прокрутки используется сопоставимый объём текста.</string>
+    <string name="contextual_translation_page_count_description">Страницы контекста: текущая и предыдущие. Пока пагинация не завершена, используется сопоставимый объём предшествующего текста.</string>
     <string name="contextual_translation_fewer_pages">Уменьшить число страниц</string>
     <string name="contextual_translation_more_pages">Увеличить число страниц</string>
     <string name="contextual_translation_instruction">Ваш промпт</string>

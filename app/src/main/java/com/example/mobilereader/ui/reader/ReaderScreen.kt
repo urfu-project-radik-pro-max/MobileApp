@@ -12,7 +12,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -22,7 +21,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
@@ -52,7 +50,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -103,7 +100,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.AbsoluteAlignment
@@ -175,7 +171,6 @@ import com.example.mobilereader.ui.theme.MobileReaderTheme
 import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.data.ReaderSettings
-import com.example.mobilereader.data.ReadingMode
 import com.example.mobilereader.data.TranslationSettings
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.ContentElement
@@ -188,7 +183,6 @@ import com.example.mobilereader.data.model.Bookmark
 import com.example.mobilereader.data.model.ParagraphStyle
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.reader.selection.BookSelection
-import com.example.mobilereader.ui.reader.selection.BookAnchor
 import com.example.mobilereader.ui.reader.selection.ReaderHighlights
 import com.example.mobilereader.ui.reader.selection.SelectionAutoAdvance
 import com.example.mobilereader.ui.reader.selection.SelectionAutoAdvanceEffect
@@ -201,7 +195,6 @@ import com.example.mobilereader.ui.reader.selection.rememberReaderHighlights
 import com.example.mobilereader.ui.reader.selection.rememberTextFragment
 import com.example.mobilereader.ui.theme.isDark
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
@@ -365,7 +358,6 @@ private fun ReaderContent(
 
 
     val displayedIndex = remember { mutableIntStateOf(viewModel.currentFlatIndex) }
-    var seekTarget by remember { mutableStateOf<Int?>(null) }
     var seekFraction by remember { mutableStateOf<Float?>(null) }
 
 
@@ -400,7 +392,6 @@ private fun ReaderContent(
 
 
     val livePagePosition = remember { mutableStateOf<Float?>(null) }
-    val liveScrollPosition = remember { mutableStateOf<Float?>(null) }
 
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -486,7 +477,7 @@ private fun ReaderContent(
     }
 
 
-    val turnController = remember(ready.book.id, settings.readingMode) {
+    val turnController = remember(ready.book.id) {
         VolumeTurnController(SystemClock::uptimeMillis)
     }
     val mainActivity = activity as? MainActivity
@@ -528,8 +519,6 @@ private fun ReaderContent(
     LaunchedEffect(ready) { selection.clear() }
 
 
-    LaunchedEffect(settings.readingMode) { selection.clear() }
-
     var noteToShow by remember { mutableStateOf<VisibleNote?>(null) }
     val navigationReturnLocation by viewModel.navigationReturnLocation.collectAsStateWithLifecycle()
     val returnTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
@@ -541,25 +530,17 @@ private fun ReaderContent(
     LaunchedEffect(returnTimeout) { viewModel.setReturnTimeoutMillis(returnTimeout) }
     val navigationBackAvailable = navigationReturnLocation != null
     val pagination by viewModel.pagination.collectAsStateWithLifecycle()
-    val returnPageNumber = if (settings.readingMode == ReadingMode.PAGES) {
-        val origin = navigationReturnLocation as? ReaderReturnLocation.Main
-        val pages = pagination?.takeIf { !it.partial }?.pages
-        if (origin != null && pages != null) {
+    val returnPageNumber = (navigationReturnLocation as? ReaderReturnLocation.Main)?.let { origin ->
+        pagination?.takeIf { holder -> !holder.partial }?.pages?.let { pages ->
             ReaderNavigationPolicy.pageIndexForLocation(pages, origin)?.plus(1)
-        } else null
-    } else null
+        }
+    }
     val currentReturnLabel = returnPageNumber?.let { stringResource(R.string.reader_return_page, it) }
         ?: stringResource(R.string.reader_return)
 
 
     var returnLabel by remember { mutableStateOf(currentReturnLabel) }
     if (navigationBackAvailable) returnLabel = currentReturnLabel
-    val readerDensity = LocalDensity.current
-    val readingTopReferencePx = with(readerDensity) {
-        (WindowInsets.systemBarsIgnoringVisibility.asPaddingValues()
-            .calculateTopPadding() + 20.dp).toPx()
-    }
-
     fun currentBookSurfaceLocation(): ReaderReturnLocation {
         val documentId = linkedDocumentId
         return if (documentId != null) {
@@ -569,24 +550,9 @@ private fun ReaderContent(
                 scrollOffset = linkedDocumentScrollOffset,
             )
         } else {
-            val logicalAnchor = if (settings.readingMode == ReadingMode.SCROLL) {
-                selection.spaceSize?.let { size ->
-                    selection.anchorAt(
-                        point = Offset(size.width / 2f, readingTopReferencePx),
-                        maxVerticalGap = with(readerDensity) { 96.dp.toPx() },
-                    )
-                }?.takeIf { it.itemIndex == viewModel.currentFlatIndex }
-            } else {
-                null
-            }
             ReaderReturnLocation.Main(
                 flatItemIndex = viewModel.currentFlatIndex,
-                charOffset = if (settings.readingMode == ReadingMode.PAGES) {
-                    viewModel.currentCharOffset
-                } else {
-                    logicalAnchor?.charOffset
-                },
-                scrollOffset = viewModel.currentScrollOffset,
+                charOffset = viewModel.currentCharOffset,
             )
         }
     }
@@ -610,6 +576,7 @@ private fun ReaderContent(
                 linkedDocumentItem = 0
                 linkedDocumentScrollOffset = 0
                 linkedDocumentSeek = null
+                seekFraction = null
                 seekPosition = surface
                 true
             }
@@ -750,61 +717,30 @@ private fun ReaderContent(
 
                 .magnifier(sourceCenter = { selection.magnifierSource() }),
         ) {
-            when (settings.readingMode) {
-                ReadingMode.SCROLL -> ScrollReader(
-                    ready = ready,
-                    settings = settings,
-                    appSettings = appSettings,
-                    fontSize = settings.fontSizeSp,
-                    colors = colors,
-                    viewModel = viewModel,
-                    displayedIndex = displayedIndex,
-                    livePosition = liveScrollPosition,
-                    seekTarget = seekTarget,
-                    onSeekConsumed = { seekTarget = null },
-                    seekFraction = seekFraction,
-                    onSeekFractionConsumed = { seekFraction = null },
-                    seekPosition = seekPosition,
-                    onSeekPositionConsumed = { seekPosition = null },
-                    onToggleChrome = {
-                        onToggleChrome()
-                        searchHighlight = null
-                    },
-                    searchHighlight = searchHighlight,
-                    brightnessHandlers = brightnessHandlers,
-                    turnController = turnController,
-                    footnotes = footnotes,
-                    quoteRanges = quoteRanges,
-                    selection = selection,
-                )
-
-                ReadingMode.PAGES -> PagedReader(
-                    ready = ready,
-                    settings = settings,
-                    appSettings = appSettings,
-                    colors = colors,
-                    viewModel = viewModel,
-                    displayedIndex = displayedIndex,
-                    pagePosition = pagePosition,
-                    livePagePosition = livePagePosition,
-                    seekTarget = seekTarget,
-                    onSeekConsumed = { seekTarget = null },
-                    seekFraction = seekFraction,
-                    onSeekFractionConsumed = { seekFraction = null },
-                    seekPosition = seekPosition,
-                    onSeekPositionConsumed = { seekPosition = null },
-                    onToggleChrome = {
-                        onToggleChrome()
-                        searchHighlight = null
-                    },
-                    searchHighlight = searchHighlight,
-                    brightnessHandlers = brightnessHandlers,
-                    turnController = turnController,
-                    footnotes = footnotes,
-                    quoteRanges = quoteRanges,
-                    selection = selection,
-                )
-            }
+            PagedReader(
+                ready = ready,
+                settings = settings,
+                appSettings = appSettings,
+                colors = colors,
+                viewModel = viewModel,
+                displayedIndex = displayedIndex,
+                pagePosition = pagePosition,
+                livePagePosition = livePagePosition,
+                seekFraction = seekFraction,
+                onSeekFractionConsumed = { seekFraction = null },
+                seekPosition = seekPosition,
+                onSeekPositionConsumed = { seekPosition = null },
+                onToggleChrome = {
+                    onToggleChrome()
+                    searchHighlight = null
+                },
+                searchHighlight = searchHighlight,
+                brightnessHandlers = brightnessHandlers,
+                turnController = turnController,
+                footnotes = footnotes,
+                quoteRanges = quoteRanges,
+                selection = selection,
+            )
 
             SelectionAutoAdvanceEffect(selection)
             SelectionHandles(selection, colors.accent)
@@ -923,51 +859,40 @@ private fun ReaderContent(
 
         val currentChapter = ready.chapterAt(displayedIndex.intValue)
 
-        val pageInfo = pagePosition.value
-        val livePage = livePagePosition.value
+        val pageInfo = ReaderNavigationPolicy.completePagePosition(pagePosition.value, fullPages)
+        val livePage = livePagePosition.value.takeIf { pageInfo != null }
         val fraction = pageInfo?.let { (page, total) ->
             if (total <= 1) 1f else (livePage ?: page.toFloat()) / (total - 1)
-        } ?: if (ready.items.size <= 1) {
-            0f
-        } else {
-            (liveScrollPosition.value ?: displayedIndex.intValue.toFloat()) /
-                (ready.items.size - 1)
-        }
+        } ?: (seekFraction ?: 0f)
 
 
-        val chapterStartPages = remember(pagination, ready) {
-            val pages = pagination?.takeIf { !it.partial }?.pages
-            if (pages.isNullOrEmpty()) {
+        val chapterStartPages = remember(fullPages, ready) {
+            if (fullPages.isNullOrEmpty()) {
                 null
             } else {
                 ready.chapterStarts.map { start ->
-                    pages.indexOfLast { it.firstItemIndex <= start }.coerceAtLeast(0)
+                    fullPages.indexOfLast { page -> page.firstItemIndex <= start }.coerceAtLeast(0)
                 }
             }
         }
-        val usePages = pageInfo != null && chapterStartPages != null
-        val bookSegments = remember(ready, chapterStartPages, usePages) {
-            if (usePages) {
-                val total = ((pagination?.pages?.size ?: 1) - 1).coerceAtLeast(1)
-                chapterStartPages.map { it.toFloat() / total }
+        val pagesReady = pageInfo != null && chapterStartPages != null
+        val bookSegments = remember(chapterStartPages, pageInfo) {
+            if (chapterStartPages == null || pageInfo == null) {
+                emptyList()
             } else {
-                val total = (ready.items.size - 1).coerceAtLeast(1)
-                ready.chapterStarts.map { it.toFloat() / total }
+                val lastPage = (pageInfo.second - 1).coerceAtLeast(1)
+                chapterStartPages.map { startPage -> startPage.toFloat() / lastPage }
             }
         }
 
-        val chapterStart = ready.chapterStarts[currentChapter]
-        val chapterEnd = ready.chapterStarts.getOrNull(currentChapter + 1) ?: ready.items.size
-        val chapterFraction = if (usePages) {
+        val chapterFraction = if (pagesReady) {
             val page = livePage ?: pageInfo.first.toFloat()
             val startPage = chapterStartPages[currentChapter]
             val endPage = chapterStartPages.getOrNull(currentChapter + 1)?.minus(1)
                 ?: (pageInfo.second - 1)
             if (endPage <= startPage) 1f else (page - startPage) / (endPage - startPage)
         } else {
-            val span = chapterEnd - 1 - chapterStart
-            val position = liveScrollPosition.value ?: displayedIndex.intValue.toFloat()
-            if (span <= 0) 1f else ((position - chapterStart) / span).coerceIn(0f, 1f)
+            0f
         }
 
         fun commitProgressSeek(changed: Boolean, seek: () -> Unit): Boolean {
@@ -992,7 +917,7 @@ private fun ReaderContent(
             panelFraction = panelFraction,
             chapterStartPages = chapterStartPages,
             totalPages = pageInfo?.second,
-            progressValuesReady = settings.readingMode == ReadingMode.SCROLL || usePages,
+            progressValuesReady = pagesReady,
             ready = ready,
             book = liveBook,
             currentChapter = currentChapter,
@@ -1002,7 +927,7 @@ private fun ReaderContent(
             bookFraction = fraction.coerceIn(0f, 1f),
             bookSegments = bookSegments,
             onSeekChapter = { f ->
-                if (usePages) {
+                if (pagesReady) {
                     val startPage = chapterStartPages[currentChapter]
                     val endPage = chapterStartPages.getOrNull(currentChapter + 1)?.minus(1)
                         ?: (pageInfo.second - 1)
@@ -1017,28 +942,14 @@ private fun ReaderContent(
                             (pageInfo.second - 1).coerceAtLeast(1)
                     }
                 } else {
-                    val targetItem = ReaderNavigationPolicy.progressTargetIndex(
-                        fraction = f,
-                        firstIndex = chapterStart,
-                        lastIndexInclusive = chapterEnd - 1,
-                    )
-                    commitProgressSeek(targetItem != displayedIndex.intValue) {
-                        seekTarget = targetItem
-                    }
+                    false
                 }
             },
             onSeekBook = { f ->
                 val info = pageInfo
-                if (pagination?.partial == true) {
-
-
-                    val stableCurrentFraction = if (ready.items.size > 1) {
-                        displayedIndex.intValue.toFloat() / (ready.items.size - 1)
-                    } else {
-                        0f
-                    }
+                if (info == null) {
                     val pending = ReaderNavigationPolicy.pendingBookFractionSeek(
-                        currentFraction = stableCurrentFraction,
+                        currentFraction = seekFraction ?: Float.NaN,
                         requestedFraction = f,
                     )
                     if (pending == null) {
@@ -1046,7 +957,7 @@ private fun ReaderContent(
                     } else {
                         commitProgressSeek(changed = true) { seekFraction = pending }
                     }
-                } else if (info != null) {
+                } else {
                     val targetPage = ReaderNavigationPolicy.progressTargetIndex(
                         fraction = f,
                         firstIndex = 0,
@@ -1056,15 +967,6 @@ private fun ReaderContent(
                     commitProgressSeek(targetPage != currentPage) {
                         seekFraction = targetPage.toFloat() /
                             (info.second - 1).coerceAtLeast(1)
-                    }
-                } else {
-                    val targetItem = ReaderNavigationPolicy.progressTargetIndex(
-                        fraction = f,
-                        firstIndex = 0,
-                        lastIndexInclusive = ready.items.size - 1,
-                    )
-                    commitProgressSeek(targetItem != displayedIndex.intValue) {
-                        seekFraction = f
                     }
                 }
             },
@@ -1127,7 +1029,7 @@ private fun ReaderContent(
         )
     }
 
-    if (settings.readingMode == ReadingMode.PAGES && pagination == null) {
+    if (pagination == null) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1645,352 +1547,6 @@ internal fun AnnotatedString.withSearchHighlight(
 }
 
 
-private class ScrollTurnProgress(val distance: Float) {
-    var consumed = 0f
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ScrollReader(
-    ready: ReaderState.Ready,
-    settings: ReaderSettings,
-    appSettings: AppSettings,
-    fontSize: Float,
-    colors: ReaderColors,
-    viewModel: ReaderViewModel,
-    displayedIndex: MutableIntState,
-    livePosition: androidx.compose.runtime.MutableState<Float?>,
-    seekTarget: Int?,
-    onSeekConsumed: () -> Unit,
-    seekFraction: Float?,
-    onSeekFractionConsumed: () -> Unit,
-    seekPosition: ReaderReturnLocation.Main?,
-    onSeekPositionConsumed: () -> Unit,
-    onToggleChrome: () -> Unit,
-    brightnessHandlers: BrightnessHandlers,
-    turnController: VolumeTurnController,
-    footnotes: FootnoteHandler?,
-    quoteRanges: List<BookSelection>,
-    searchHighlight: String?,
-    selection: SelectionController,
-) {
-    val scope = rememberCoroutineScope()
-    val liveBook by viewModel.book.collectAsStateWithLifecycle()
-    val rawInitialIndex = viewModel.currentFlatIndex.coerceIn(0, ready.items.size - 1)
-    val initialIndex = rawInitialIndex
-    val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialIndex,
-        initialFirstVisibleItemScrollOffset = if (initialIndex == rawInitialIndex &&
-            rawInitialIndex == ready.book.progress.elementIndex
-        ) {
-            ready.book.progress.scrollOffset
-        } else {
-            0
-        },
-    )
-    val pageTurnAnimationEnabled = rememberUpdatedState(settings.pageTurnAnimationEnabled)
-    var activeScrollTurn by remember { mutableStateOf<ScrollTurnProgress?>(null) }
-
-    suspend fun turnBy(delta: Int) {
-        val distance = delta * listState.layoutInfo.viewportSize.height * 0.88f
-        if (!pageTurnAnimationEnabled.value) {
-            listState.scrollBy(distance)
-            return
-        }
-
-        val turn = ScrollTurnProgress(distance)
-        activeScrollTurn = turn
-        try {
-            listState.scroll {
-                animate(0f, distance) { value, _ ->
-                    val requestedStep = value - turn.consumed
-                    val consumedStep = scrollBy(requestedStep)
-                    turn.consumed += consumedStep
-                }
-            }
-        } finally {
-            if (activeScrollTurn === turn) {
-                activeScrollTurn = null
-            }
-        }
-    }
-
-    LaunchedEffect(settings.pageTurnAnimationEnabled) {
-        if (!settings.pageTurnAnimationEnabled) {
-            val turn = activeScrollTurn ?: return@LaunchedEffect
-            listState.scroll {
-                scrollBy(turn.distance - turn.consumed)
-            }
-        }
-    }
-    val density = LocalDensity.current
-    val stableInsets = WindowInsets.systemBarsIgnoringVisibility.asPaddingValues()
-    val readingTopReferencePx = with(density) {
-        (stableInsets.calculateTopPadding() + 20.dp).toPx()
-    }
-    fun currentScrollLocation(): ReaderReturnLocation.Main {
-        val index = listState.firstVisibleItemIndex.coerceIn(ready.items.indices)
-        val anchor = selection.spaceSize?.let { size ->
-            selection.anchorAt(
-                point = Offset(size.width / 2f, readingTopReferencePx),
-                maxVerticalGap = with(density) { 96.dp.toPx() },
-            )
-        }?.takeIf { it.itemIndex == index }
-        return ReaderReturnLocation.Main(
-            flatItemIndex = index,
-            charOffset = anchor?.charOffset,
-            scrollOffset = listState.firstVisibleItemScrollOffset,
-        )
-    }
-
-    LaunchedEffect(ready) {
-        val charOffset = viewModel.currentCharOffset
-        if (charOffset > 0) {
-            repeat(6) {
-                withFrameNanos { }
-                val caret = selection.caretAt(BookAnchor(initialIndex, charOffset))
-                if (caret != null) {
-                    val correction = caret.top - readingTopReferencePx
-                    if (abs(correction) > 0.5f) listState.scrollBy(correction)
-                    return@LaunchedEffect
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(ready) {
-        snapshotFlow {
-            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-        }.collect { (index, offset) ->
-                displayedIndex.intValue = index.coerceAtMost(ready.items.size - 1)
-                viewModel.observeVisiblePosition(
-                    index, offset, currentScrollLocation().charOffset ?: 0,
-                )
-                if (index >= ready.items.size - 1) viewModel.markFinished()
-            }
-    }
-
-
-    LaunchedEffect(ready, listState) {
-        var origin: ReaderReturnLocation.Main? = null
-        var previousOffsets = emptyMap<Int, Int>()
-        var travelledPx = 0f
-        var viewportPx = 1
-        snapshotFlow {
-            Triple(
-                listState.isScrollInProgress,
-                listState.layoutInfo.visibleItemsInfo.map { it.index to it.offset },
-                listState.layoutInfo.viewportSize.height.coerceAtLeast(1),
-            )
-        }.collect { (moving, visible, viewport) ->
-            val currentOffsets = visible.toMap()
-            viewportPx = viewport
-            if (moving && origin == null) {
-                origin = currentScrollLocation()
-                travelledPx = 0f
-            }
-            if (moving) {
-                val common = previousOffsets.keys.firstOrNull { it in currentOffsets }
-                if (common != null) {
-                    travelledPx += abs(
-                        previousOffsets.getValue(common) - currentOffsets.getValue(common),
-                    )
-                }
-            } else {
-                val start = origin
-                if (start != null && !selection.active &&
-                    ReaderNavigationPolicy.isLargeScrollJump(travelledPx, viewportPx)
-                ) {
-                    val end = currentScrollLocation()
-                    if (end != start) viewModel.rememberNavigationOrigin(start, expires = true)
-                }
-                origin = null
-                travelledPx = 0f
-            }
-            previousOffsets = currentOffsets
-        }
-    }
-
-
-    LaunchedEffect(ready) {
-        snapshotFlow {
-            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull()
-            if (info == null || info.size <= 0) {
-                null
-            } else {
-                info.index + ((-info.offset).toFloat() / info.size).coerceIn(0f, 1f)
-            }
-        }.collect { position -> position?.let { livePosition.value = it } }
-    }
-    LaunchedEffect(ready) {
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collectLatest { (index, offset) ->
-                delay(400.milliseconds)
-                viewModel.saveProgress(index, offset, currentScrollLocation().charOffset ?: 0)
-            }
-    }
-    LaunchedEffect(seekTarget) {
-        val target = seekTarget ?: return@LaunchedEffect
-        val sourceItem = target.coerceIn(0, ready.items.size - 1)
-        livePosition.value = sourceItem.toFloat()
-        listState.scrollToItem(sourceItem)
-        onSeekConsumed()
-    }
-    LaunchedEffect(seekFraction) {
-        val fraction = seekFraction ?: return@LaunchedEffect
-        val item = (fraction * (ready.items.size - 1)).roundToInt()
-            .coerceIn(0, ready.items.size - 1)
-        livePosition.value = item.toFloat()
-        listState.scrollToItem(item)
-        onSeekFractionConsumed()
-    }
-    LaunchedEffect(seekPosition) {
-        val position = seekPosition ?: return@LaunchedEffect
-        val sourceTarget = position.flatItemIndex.coerceIn(0, ready.items.size - 1)
-        val visibleTarget = sourceTarget
-        livePosition.value = sourceTarget.toFloat()
-        val charOffset = position.charOffset
-        if (charOffset == null) {
-            listState.scrollToItem(visibleTarget, position.scrollOffset.coerceAtLeast(0))
-        } else {
-
-
-            listState.scrollToItem(visibleTarget)
-            var restored = false
-            repeat(3) {
-                withFrameNanos { }
-                val caret = selection.caretAt(BookAnchor(sourceTarget, charOffset))
-                if (caret != null) {
-                    val correction = caret.top - readingTopReferencePx
-                    if (abs(correction) > 0.5f) listState.scrollBy(correction)
-                    restored = true
-                }
-            }
-            if (!restored) {
-                listState.scrollToItem(
-                    visibleTarget,
-                    position.scrollOffset.coerceAtLeast(0),
-                )
-            }
-        }
-        onSeekPositionConsumed()
-    }
-    LaunchedEffect(ready, turnController) {
-        turnController.collectTurns { forward ->
-            val delta = if (forward) 1 else -1
-            turnBy(delta)
-        }
-    }
-    DisposableEffect(ready) {
-        onDispose {
-            viewModel.saveProgress(
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-                currentScrollLocation().charOffset ?: 0,
-            )
-        }
-    }
-
-    val highlights = rememberReaderHighlights(
-        controller = selection,
-        quotes = quoteRanges,
-        quoteColor = colors.quoteHighlight,
-        selectionColor = colors.selection,
-    )
-
-    DisposableEffect(selection, listState) {
-        val mine = SelectionAutoAdvance(
-            paged = false,
-            step = { _, pixels -> listState.scrollBy(pixels) },
-        )
-        selection.advance = mine
-        selection.surfaceMoving = { listState.isScrollInProgress }
-
-
-        onDispose {
-            if (selection.advance === mine) {
-                selection.advance = null
-                selection.surfaceMoving = { false }
-            }
-        }
-    }
-
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val contentWidth = maxWidth - ReaderMetrics.horizontalPadding(settings.pageMargins) * 2
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .readerGestures(
-                    onTapLeft = {
-                        scope.launch {
-                            val delta = ReaderProgression.horizontalTapDelta(
-                                leftEdge = true,
-                                progression = ready.pageProgression,
-                            )
-                            turnBy(delta)
-                        }
-                    },
-                    onTapRight = {
-                        scope.launch {
-                            val delta = ReaderProgression.horizontalTapDelta(
-                                leftEdge = false,
-                                progression = ready.pageProgression,
-                            )
-                            turnBy(delta)
-                        }
-                    },
-                    onTapCenter = onToggleChrome,
-                    edgeTapPagingEnabled = settings.edgeTapPagingEnabled,
-                    brightnessGestureEnabled = settings.brightnessGestureEnabled,
-                    brightnessHandlers = brightnessHandlers,
-                ),
-            contentPadding = PaddingValues(
-                top = stableInsets.calculateTopPadding() + 20.dp,
-                bottom = stableInsets.calculateBottomPadding() + 48.dp,
-            ),
-        ) {
-            items(ready.items.size, key = { it }) { index ->
-                val readerItem = ready.items[index]
-                RenderPart(
-                    element = readerItem.element,
-                    textOverride = null,
-                    isParagraphStart = true,
-                    imageHeightPx = null,
-                    settings = settings,
-                    appSettings = appSettings,
-                    fontSize = fontSize,
-                    colors = colors,
-                    contentWidth = contentWidth,
-                    bookFonts = ready.bookFonts,
-                    language = ready.language,
-                    footnotes = footnotes,
-                    searchHighlight = searchHighlight,
-                    highlights = highlights,
-                    itemIndex = index,
-                )
-            }
-            item(key = "completion") {
-                CompletionPage(
-                    book = liveBook,
-                    colors = colors,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 48.dp, bottom = 24.dp),
-                )
-            }
-        }
-        Spacer(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(colors.background),
-        )
-    }
-}
-
-
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PagedReader(
@@ -2002,8 +1558,6 @@ private fun PagedReader(
     displayedIndex: MutableIntState,
     pagePosition: androidx.compose.runtime.MutableState<Pair<Int, Int>?>,
     livePagePosition: androidx.compose.runtime.MutableState<Float?>,
-    seekTarget: Int?,
-    onSeekConsumed: () -> Unit,
     seekFraction: Float?,
     onSeekFractionConsumed: () -> Unit,
     seekPosition: ReaderReturnLocation.Main?,
@@ -2168,13 +1722,13 @@ private fun PagedReader(
 
                         val flat = pages[settled].firstItemIndex
                         displayedIndex.intValue = flat
-                        viewModel.saveProgress(flat, 0, pages[settled].firstCharOffset)
+                        viewModel.saveProgress(flat, pages[settled].firstCharOffset)
                         return@collect
                     }
                     val flatIndex = pages[settled].firstItemIndex
                     displayedIndex.intValue = flatIndex
                     pagePosition.value = settled to realPageCount
-                    viewModel.saveProgress(flatIndex, 0, pages[settled].firstCharOffset)
+                    viewModel.saveProgress(flatIndex, pages[settled].firstCharOffset)
                 }
             }
 
@@ -2212,13 +1766,6 @@ private fun PagedReader(
 
                     lastTargetPage = target
                 }
-            }
-            LaunchedEffect(seekTarget) {
-                val target = seekTarget ?: return@LaunchedEffect
-                val page = pages.indexOfLast { it.firstItemIndex <= target }.coerceAtLeast(0)
-                livePagePosition.value = page.toFloat()
-                pagerState.scrollToPage(page)
-                onSeekConsumed()
             }
             LaunchedEffect(seekFraction, current.partial) {
                 val fraction = seekFraction ?: return@LaunchedEffect
@@ -2266,8 +1813,7 @@ private fun PagedReader(
 
             DisposableEffect(selection, pagerState, realPageCount) {
                 val mine = SelectionAutoAdvance(
-                    paged = true,
-                    step = { direction, _ ->
+                    step = { direction ->
                         val logicalDirection = ReaderProgression.selectionPageDelta(
                             direction,
                             ready.pageProgression,

@@ -21,9 +21,6 @@
     <string name="reader_font_literata">Literata</string>
     <string name="reader_font_sans">Sans</string>
     <string name="reader_justify">Justify text</string>
-    <string name="reader_mode">Reading mode</string>
-    <string name="reader_mode_scroll">Scroll</string>
-    <string name="reader_mode_pages">Pages</string>
     <string name="reader_hyphenation">Hyphenation</string>
     <string name="reader_page_of">Page %1$d of %2$d</string>
     <string name="reader_bookmarks">Bookmarks</string>
@@ -104,7 +101,7 @@
     <string name="duration_less_min">less than a minute</string>
     <string name="settings_close">Close</string>
     <string name="contextual_translation_title">Contextual translation</string>
-    <string name="contextual_translation_page_count_description">Pages of context: the selected page and preceding pages. In scroll mode, a similar amount of text is used.</string>
+    <string name="contextual_translation_page_count_description">Pages of context: the selected page and preceding pages. While pagination is in progress, a similar amount of preceding text is used.</string>
     <string name="contextual_translation_fewer_pages">Use fewer pages</string>
     <string name="contextual_translation_more_pages">Use more pages</string>
     <string name="contextual_translation_instruction">Your instruction</string>

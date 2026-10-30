@@ -20,7 +20,6 @@ data class BookTextPosition(
 data class ReadingProgress(
     val chapterIndex: Int = 0,
     val elementIndex: Int = 0,
-    val scrollOffset: Int = 0,
     val fraction: Float = 0f,
 
 

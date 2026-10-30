@@ -25,11 +25,16 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+internal val bookRepositoryJson = Json { ignoreUnknownKeys = true }
+
+internal fun decodeStoredBooks(serialized: String): List<Book> =
+    bookRepositoryJson.decodeFromString(serialized)
+
 class BookRepository(private val context: Context) {
     private val storedBooksFile = File(context.filesDir, "books.json")
     private val storedBooksDirectory = File(context.filesDir, "books")
     private val storedPicturesDirectory = File(context.filesDir, "pictures")
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = bookRepositoryJson
     private val writingLock = Mutex()
     private val mutableBooks = MutableStateFlow(readStoredBooks())
     val books: StateFlow<List<Book>> = mutableBooks
@@ -173,7 +178,7 @@ class BookRepository(private val context: Context) {
     }
 
     private fun readStoredBooks(): List<Book> = runCatching {
-        if (storedBooksFile.isFile) json.decodeFromString<List<Book>>(storedBooksFile.readText()) else emptyList()
+        if (storedBooksFile.isFile) decodeStoredBooks(storedBooksFile.readText()) else emptyList()
     }.getOrDefault(emptyList())
 }
 

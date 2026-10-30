@@ -17,9 +17,7 @@ private val PAGE_HOLD = 150.milliseconds
 @Stable
 class SelectionAutoAdvance(
 
-    val paged: Boolean,
-
-    val step: suspend (direction: Int, pixels: Float) -> Unit,
+    val step: suspend (direction: Int) -> Unit,
 
     val settle: suspend () -> Unit = {},
 )
@@ -29,7 +27,6 @@ class SelectionAutoAdvance(
 fun SelectionAutoAdvanceEffect(controller: SelectionController) {
     val density = LocalDensity.current
     val bandPx = with(density) { SelectionHitRules.EDGE_BAND.toPx() }
-    val maxScrollPx = with(density) { SelectionHitRules.AUTO_SCROLL_MAX_PER_FRAME.toPx() }
 
     LaunchedEffect(controller.dragging) {
         if (!controller.dragging) return@LaunchedEffect
@@ -43,27 +40,13 @@ fun SelectionAutoAdvanceEffect(controller: SelectionController) {
                 val direction = SelectionHitRules.edgeAdvance(
                     point = point,
                     width = size.width.toFloat(),
-                    height = size.height.toFloat(),
-                    paged = advance.paged,
                     bandPx = bandPx,
                 )
                 if (direction == 0) continue
 
                 advanced = true
-                if (advance.paged) {
-                    advance.step(direction, 0f)
-                    delay(PAGE_HOLD)
-                } else {
-                    advance.step(
-                        direction,
-                        SelectionHitRules.autoScrollPx(
-                            y = point.y,
-                            height = size.height.toFloat(),
-                            bandPx = bandPx,
-                            maxPerFrame = maxScrollPx,
-                        ),
-                    )
-                }
+                advance.step(direction)
+                delay(PAGE_HOLD)
 
                 controller.reExtend()
             }

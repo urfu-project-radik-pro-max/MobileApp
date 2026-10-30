@@ -187,10 +187,6 @@ class ReaderViewModel(
     var currentCharOffset: Int = 0
         private set
 
-
-    var currentScrollOffset: Int = 0
-        private set
-
     private val navigationSession = ReaderNavigationSession(
         viewModelScope, android.os.SystemClock::elapsedRealtime,
     )
@@ -213,9 +209,8 @@ class ReaderViewModel(
     }
 
 
-    fun observeVisiblePosition(flatIndex: Int, scrollOffset: Int, charOffset: Int = 0) {
+    fun observeVisiblePosition(flatIndex: Int, charOffset: Int = 0) {
         currentFlatIndex = flatIndex
-        currentScrollOffset = scrollOffset
         currentCharOffset = charOffset
     }
 
@@ -329,7 +324,6 @@ class ReaderViewModel(
                     ?.resolvePosition(restoredProgress.textPosition)
                 currentFlatIndex = restored?.itemIndex ?: 0
                 currentCharOffset = restored?.charOffset ?: 0
-                currentScrollOffset = 0
             }
             _state.value = next
         }
@@ -531,10 +525,7 @@ class ReaderViewModel(
         translationJob?.cancel()
         val ready = state.value as? ReaderState.Ready ?: return
         val currentSettings = translationSettings.value
-        val pages = pagination.value?.takeIf { holder ->
-            settings.value.readingMode == com.example.mobilereader.data.ReadingMode.PAGES &&
-                !holder.partial
-        }?.pages
+        val pages = pagination.value?.takeIf { holder -> !holder.partial }?.pages
         val context = try {
             ContextualTranslationContextBuilder.build(
                 items = ready.items,
@@ -590,21 +581,27 @@ class ReaderViewModel(
         settingsRepository.updateApp { it.copy(defaultTranslator = component) }
     }
 
-    fun saveProgress(firstVisibleIndex: Int, scrollOffset: Int, charOffset: Int = 0) {
+    fun saveProgress(firstVisibleIndex: Int, charOffset: Int = 0) {
         val ready = _state.value as? ReaderState.Ready ?: return
         val position = ready.savedPosition(firstVisibleIndex, charOffset) ?: return
-        observeVisiblePosition(firstVisibleIndex, scrollOffset, charOffset)
-        val fraction = if (ready.items.size <= 1) {
-            0f
+        observeVisiblePosition(firstVisibleIndex, charOffset)
+        val fullPages = _pagination.value?.takeIf { holder -> !holder.partial }?.pages
+        val currentPage = fullPages?.let { pages ->
+            ReaderNavigationPolicy.pageIndexForLocation(
+                pages,
+                ReaderReturnLocation.Main(firstVisibleIndex, charOffset),
+            )
+        }
+        val fraction = if (currentPage != null && fullPages.size > 1) {
+            currentPage.toFloat() / (fullPages.size - 1)
         } else {
-            (firstVisibleIndex.toFloat() / (ready.items.size - 1)).coerceIn(0f, 1f)
+            ready.book.progress.fraction
         }
         val chapter = ready.chapterAt(firstVisibleIndex)
-        val pageCounts = pageCountsFor(ready, chapter, firstVisibleIndex)
+        val pageCounts = pageCountsFor(ready, chapter, firstVisibleIndex, charOffset)
         val progress = ReadingProgress(
             chapterIndex = chapter,
             elementIndex = firstVisibleIndex,
-            scrollOffset = scrollOffset,
             fraction = fraction,
             pagesLeftInChapter = pageCounts.first,
             totalPages = pageCounts.second,
@@ -618,36 +615,24 @@ class ReaderViewModel(
         ready: ReaderState.Ready,
         chapter: Int,
         firstVisibleIndex: Int,
+        charOffset: Int,
     ): Pair<Int, Int> {
         val holder = _pagination.value ?: return -1 to 0
         if (holder.partial) return -1 to 0
         val pages = holder.pages
         if (pages.isEmpty()) return -1 to 0
 
-        val currentPage = lastPageStartingAtOrBefore(pages, firstVisibleIndex)
+        val currentPage = ReaderNavigationPolicy.pageIndexForLocation(
+            pages,
+            ReaderReturnLocation.Main(firstVisibleIndex, charOffset),
+        ) ?: return -1 to 0
         val chapterEnd = ready.chapterStarts.getOrNull(chapter + 1) ?: ready.items.size
-
-
-        val lastPageOfChapter = lastPageStartingAtOrBefore(pages, chapterEnd - 1)
+        val lastPageOfChapter = ReaderNavigationPolicy.pageIndexForLocation(
+            pages,
+            ReaderReturnLocation.Main(chapterEnd - 1, Int.MAX_VALUE),
+        ) ?: return -1 to 0
 
         return (lastPageOfChapter - currentPage).coerceAtLeast(0) to pages.size
-    }
-
-
-    private fun lastPageStartingAtOrBefore(pages: List<BookPage>, flatIndex: Int): Int {
-        var low = 0
-        var high = pages.size - 1
-        var found = 0
-        while (low <= high) {
-            val mid = (low + high) ushr 1
-            if (pages[mid].firstItemIndex <= flatIndex) {
-                found = mid
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
-        }
-        return found
     }
 
 

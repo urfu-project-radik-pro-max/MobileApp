@@ -47,11 +47,13 @@ class ReaderNavigationPolicyTest {
     }
 
     @Test
-    fun `large scroll jump ignores ordinary steps and accepts long flings`() {
-        assertFalse(ReaderNavigationPolicy.isLargeScrollJump(899f, 400))
-        assertTrue(ReaderNavigationPolicy.isLargeScrollJump(900f, 400))
-        assertFalse(ReaderNavigationPolicy.isLargeScrollJump(Float.NaN, 400))
-        assertFalse(ReaderNavigationPolicy.isLargeScrollJump(2_000f, 0))
+    fun `page indicator waits for a complete matching page map`() {
+        val pages = listOf(BookPage(emptyList(), 0), BookPage(emptyList(), 4, 120))
+        val reported = 1 to 2
+
+        assertNull(ReaderNavigationPolicy.completePagePosition(reported, null))
+        assertNull(ReaderNavigationPolicy.completePagePosition(reported, pages.take(1)))
+        assertEquals(reported, ReaderNavigationPolicy.completePagePosition(reported, pages))
     }
 
     @Test
@@ -89,16 +91,14 @@ class ReaderNavigationPolicyTest {
     }
 
     @Test
-    fun `partial no-op comparison must use a whole book coordinate`() {
-
-
-        val wholeBookCurrent = 10f / 100f
+    fun `pending seek comparison never uses an element index`() {
         val pending = ReaderNavigationPolicy.pendingBookFractionSeek(
-            currentFraction = wholeBookCurrent,
+            currentFraction = Float.NaN,
             requestedFraction = 0.75f,
         )
 
         assertEquals(0.75f, pending!!, 0f)
+        assertNull(ReaderNavigationPolicy.pendingBookFractionSeek(pending, 0.75f))
     }
 
     @Test

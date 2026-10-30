@@ -6,7 +6,6 @@ sealed interface ReaderReturnLocation {
         val flatItemIndex: Int,
 
         val charOffset: Int? = null,
-        val scrollOffset: Int = 0,
     ) : ReaderReturnLocation
 
     data class Linked(

@@ -66,11 +66,10 @@ class SelectionHitRulesTest {
     }
 
     @Test
-    fun `paged mode advances at the left and right edges`() {
+    fun `selection advances at the left and right page edges`() {
         val width = 400f
-        val height = 800f
         fun advance(x: Float, y: Float) =
-            SelectionHitRules.edgeAdvance(Offset(x, y), width, height, paged = true, bandPx = 50f)
+            SelectionHitRules.edgeAdvance(Offset(x, y), width, bandPx = 50f)
 
         assertEquals(-1, advance(20f, 400f))
         assertEquals(1, advance(390f, 400f))
@@ -78,38 +77,6 @@ class SelectionHitRulesTest {
 
         assertEquals(0, advance(200f, 10f))
         assertEquals(0, advance(200f, 790f))
-    }
-
-    @Test
-    fun `scroll mode advances at the top and bottom edges`() {
-        val width = 400f
-        val height = 800f
-        fun advance(x: Float, y: Float) =
-            SelectionHitRules.edgeAdvance(Offset(x, y), width, height, paged = false, bandPx = 50f)
-
-        assertEquals(-1, advance(200f, 20f))
-        assertEquals(1, advance(200f, 790f))
-        assertEquals(0, advance(200f, 400f))
-        assertEquals(0, advance(10f, 400f))
-    }
-
-    @Test
-    fun `auto scroll ramps with depth and stops in the middle`() {
-        val height = 800f
-        val band = 50f
-        val max = 14f
-        assertEquals(0f, SelectionHitRules.autoScrollPx(400f, height, band, max), 0.001f)
-
-        val shallow = SelectionHitRules.autoScrollPx(770f, height, band, max)
-        val deep = SelectionHitRules.autoScrollPx(800f, height, band, max)
-        assertTrue(shallow > 0f)
-        assertTrue(deep > shallow)
-        assertEquals(max, deep, 0.001f)
-
-
-        assertEquals(-max, SelectionHitRules.autoScrollPx(0f, height, band, max), 0.001f)
-
-        assertTrue(SelectionHitRules.autoScrollPx(49f, height, band, max) < -0.1f)
     }
 
     @Test

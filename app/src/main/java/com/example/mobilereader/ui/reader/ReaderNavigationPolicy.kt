@@ -18,9 +18,15 @@ internal object ReaderNavigationPolicy {
     }
 
 
-    fun isLargeScrollJump(travelledPx: Float, viewportPx: Int): Boolean =
-        travelledPx.isFinite() && viewportPx > 0 &&
-            abs(travelledPx) >= viewportPx * LARGE_SCROLL_VIEWPORTS
+    fun completePagePosition(
+        reported: Pair<Int, Int>?,
+        completePages: List<BookPage>?,
+    ): Pair<Int, Int>? {
+        if (reported == null || completePages.isNullOrEmpty()) return null
+        if (reported.second != completePages.size) return null
+        if (reported.first !in completePages.indices) return null
+        return reported
+    }
 
 
     fun partialHolderContainsTarget(
@@ -63,6 +69,5 @@ internal object ReaderNavigationPolicy {
         return firstIndex + (safeFraction * span).roundToInt()
     }
 
-    private const val LARGE_SCROLL_VIEWPORTS = 2.25f
     private const val FRACTION_NO_OP_EPSILON = 0.0005f
 }

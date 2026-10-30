@@ -17,10 +17,6 @@ import kotlinx.coroutines.flow.map
 enum class ReaderFont { LITERATA, SERIF, SANS, CUSTOM }
 
 @kotlinx.serialization.Serializable
-enum class ReadingMode { SCROLL, PAGES }
-
-
-@kotlinx.serialization.Serializable
 enum class PageMargins { NARROW, NORMAL, WIDE }
 
 
@@ -48,7 +44,6 @@ data class ReaderSettings(
 
 
     val pageMargins: PageMargins = PageMargins.NORMAL,
-    val readingMode: ReadingMode = ReadingMode.SCROLL,
 
     val startChaptersOnNewPage: Boolean = true,
 
@@ -123,7 +118,6 @@ class SettingsRepository(private val context: Context) {
         val justify = booleanPreferencesKey("justify")
         val hyphenation = booleanPreferencesKey("hyphenation")
         val pageMargins = stringPreferencesKey("page_margins")
-        val readingMode = stringPreferencesKey("reading_mode")
         val chapterNewPage = booleanPreferencesKey("chapter_new_page")
         val chapterPagesLeft = booleanPreferencesKey("chapter_pages_left")
         val hideFootnotes = booleanPreferencesKey("hide_footnotes")
@@ -209,7 +203,6 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.justify] = updated.justify
             prefs[Keys.hyphenation] = updated.hyphenation
             prefs[Keys.pageMargins] = updated.pageMargins.name
-            prefs[Keys.readingMode] = updated.readingMode.name
             prefs[Keys.chapterNewPage] = updated.startChaptersOnNewPage
             prefs[Keys.chapterPagesLeft] = updated.showChapterPagesLeft
             prefs[Keys.hideFootnotes] = updated.hideFootnotes
@@ -246,7 +239,6 @@ class SettingsRepository(private val context: Context) {
             justify = this[Keys.justify] ?: defaults.justify,
             hyphenation = this[Keys.hyphenation] ?: defaults.hyphenation,
             pageMargins = enumOrDefault(this[Keys.pageMargins], defaults.pageMargins),
-            readingMode = enumOrDefault(this[Keys.readingMode], defaults.readingMode),
             startChaptersOnNewPage = this[Keys.chapterNewPage] ?: defaults.startChaptersOnNewPage,
             showChapterPagesLeft = this[Keys.chapterPagesLeft] ?: defaults.showChapterPagesLeft,
             hideFootnotes = this[Keys.hideFootnotes] ?: defaults.hideFootnotes,

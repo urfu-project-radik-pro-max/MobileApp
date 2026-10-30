@@ -120,7 +120,6 @@ import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.theme.customFontFamily
 import com.example.mobilereader.data.ReaderSettings
 import com.example.mobilereader.data.TranslationSettings
-import com.example.mobilereader.data.ReadingMode
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -1092,36 +1091,22 @@ private fun ReaderSettingsCategoryContent(
                 Spacer(Modifier.height(18.dp))
 
 
-                Row {
-                    Column(Modifier.weight(1.15f)) {
-                        PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
-                        val marginOptions = PageMargins.entries
-                        ChipRow(
-                            options = listOf(
-                                stringResource(R.string.reader_margins_narrow),
-                                stringResource(R.string.reader_margins_normal),
-                                stringResource(R.string.reader_margins_wide),
-                            ),
-                            selectedIndex = marginOptions.indexOf(settings.pageMargins),
-                            colors = colors,
-                            onSelect = { index -> onUpdate { it.copy(pageMargins = marginOptions[index]) } },
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(0.85f)) {
-                        PanelSectionLabel(stringResource(R.string.reader_mode), colors)
-                        val modes = ReadingMode.entries
-                        ChipRow(
-                            options = listOf(
-                                stringResource(R.string.reader_mode_scroll),
-                                stringResource(R.string.reader_mode_pages),
-                            ),
-                            selectedIndex = modes.indexOf(settings.readingMode),
-                            colors = colors,
-                            onSelect = { index -> onUpdate { it.copy(readingMode = modes[index]) } },
-                        )
-                    }
-                }
+                PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
+                val marginOptions = PageMargins.entries
+                ChipRow(
+                    options = listOf(
+                        stringResource(R.string.reader_margins_narrow),
+                        stringResource(R.string.reader_margins_normal),
+                        stringResource(R.string.reader_margins_wide),
+                    ),
+                    selectedIndex = marginOptions.indexOf(settings.pageMargins),
+                    colors = colors,
+                    onSelect = { index ->
+                        onUpdate { current ->
+                            current.copy(pageMargins = marginOptions[index])
+                        }
+                    },
+                )
 
                 Spacer(Modifier.height(20.dp))
                 PanelSectionLabel(stringResource(R.string.reader_section_page_mode_settings), colors)
