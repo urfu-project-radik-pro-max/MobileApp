@@ -3,7 +3,6 @@ package com.example.mobilereader.data.parser
 import com.example.mobilereader.data.model.Chapter
 import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.NoteDocument
-import com.example.mobilereader.data.model.slicePublisherBoxSpans
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
@@ -70,11 +69,6 @@ internal fun buildNotes(
         if (end > elementIndex) {
             notes[key] = NoteDocument(
                 elements = elements.subList(elementIndex, end).toList(),
-                publisherBoxes = slicePublisherBoxSpans(
-                    spans = chapter.publisherBoxes,
-                    startElement = elementIndex,
-                    endElementExclusive = end,
-                ),
             )
         }
     }

@@ -3,7 +3,6 @@ package com.example.mobilereader.ui.reader.selection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
 
 
 enum class PillSide { ABOVE, BELOW }
@@ -22,9 +21,6 @@ object SelectionHitRules {
 
 
     val EDGE_BAND = 56.dp
-
-
-    val AUTO_SCROLL_MAX_PER_FRAME = 14.dp
 
 
     private const val VERTICAL_WEIGHT = 6f
@@ -77,31 +73,13 @@ object SelectionHitRules {
     fun edgeAdvance(
         point: Offset,
         width: Float,
-        height: Float,
-        paged: Boolean,
         bandPx: Float,
     ): Int {
-        val position = if (paged) point.x else point.y
-        val extent = if (paged) width else height
         return when {
-            position < bandPx -> -1
-            position > extent - bandPx -> 1
+            point.x < bandPx -> -1
+            point.x > width - bandPx -> 1
             else -> 0
         }
-    }
-
-
-    fun autoScrollPx(y: Float, height: Float, bandPx: Float, maxPerFrame: Float): Float {
-        if (bandPx <= 0f) return 0f
-        val aboveTop = bandPx - y
-        val belowBottom = y - (height - bandPx)
-        val depth = when {
-            aboveTop > 0f -> -aboveTop
-            belowBottom > 0f -> belowBottom
-            else -> return 0f
-        }
-        val ramp = (abs(depth) / bandPx).coerceIn(0.2f, 1f)
-        return if (depth < 0f) -maxPerFrame * ramp else maxPerFrame * ramp
     }
 
 

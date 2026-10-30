@@ -1,6 +1,5 @@
 package com.example.mobilereader.ui.reader
 
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -8,7 +7,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextIndent
@@ -56,28 +54,7 @@ object ReaderMetrics {
             ParagraphStyle.POEM -> 24.dp
             else -> 0.dp
         }
-        val block = blockOf(element) ?: return kindInset to 0.dp
-
-        var start = (contentWidth * block.indentStartFrac) +
-            (fontSize * block.indentStartEm).dp
-        var end = (contentWidth * block.indentEndFrac) +
-            (fontSize * block.indentEndEm).dp
-
-
-        if (start < kindInset) start = kindInset
-        val left = (contentWidth * block.indentLeftFrac) +
-            (fontSize * block.indentLeftEm).dp
-        val right = (contentWidth * block.indentRightFrac) +
-            (fontSize * block.indentRightEm).dp
-        if (isRtl(element)) {
-            start += right
-            end += left
-        } else {
-            start += left
-            end += right
-        }
-        return start.coerceAtMost(contentWidth * 0.45f) to
-            end.coerceAtMost(contentWidth * 0.45f)
+        return kindInset to 0.dp
     }
 
 
@@ -126,7 +103,6 @@ object ReaderMetrics {
     fun verticalPaddings(
         element: ContentElement,
         fontSize: Float,
-        bookStyles: Boolean = false,
     ): Pair<Dp, Dp> {
         val base = when (element) {
             is ContentElement.Paragraph -> when (element.style) {
@@ -140,24 +116,13 @@ object ReaderMetrics {
             is ContentElement.Spacer -> 0.dp
             is ContentElement.Table -> 12.dp
         }
-        val block = blockOf(element)
-        val beforeSpecified = block?.spaceBeforeSpecified == true ||
-            (element as? ContentElement.Image)?.spaceBeforeSpecified == true
-        val afterSpecified = block?.spaceAfterSpecified == true ||
-            (element as? ContentElement.Image)?.spaceAfterSpecified == true
         val defaultTop = if (element is ContentElement.Heading) {
             (fontSize * HeadingDefaults.spaceBeforeEm(element.level)).dp
         } else base
         val defaultBottom = if (element is ContentElement.Heading) {
             (fontSize * HeadingDefaults.spaceAfterEm(element.level)).dp
         } else base
-        if (block == null && !beforeSpecified && !afterSpecified) return defaultTop to defaultBottom
-        val baseTop = if (bookStyles && beforeSpecified) 0.dp else defaultTop
-        val baseBottom = if (bookStyles && afterSpecified) 0.dp else defaultBottom
-
-        val top = maxOf(baseTop, (fontSize * (block?.spaceBeforeEm ?: 0f)).dp)
-        val bottom = maxOf(baseBottom, (fontSize * (block?.spaceAfterEm ?: 0f)).dp)
-        return top to bottom
+        return defaultTop to defaultBottom
     }
 
 
@@ -175,28 +140,15 @@ object ReaderMetrics {
     ): TextStyle {
         val block = blockOf(element)
         val resolvedLanguage = block?.language ?: language
-        val hyphenate = if (settings.bookStyles && block?.hyphens != null) {
-            block.hyphens == true
-        } else {
-            settings.hyphenation
-        }
+        val fontFamily = block?.fontFamily?.let { family -> bookFonts[family] }
+            ?: fontFamilyFor(settings.font)
         val base = TextStyle(
             fontSize = fontSize.sp,
             lineHeight = (fontSize * settings.lineHeight).sp,
 
 
-            platformStyle = if (settings.bookStyles) {
-                PlatformTextStyle(includeFontPadding = false)
-            } else null,
-            lineHeightStyle = if (settings.bookStyles) {
-                LineHeightStyle(
-                    alignment = LineHeightStyle.Alignment.Center,
-                    trim = LineHeightStyle.Trim.None,
-                )
-            } else null,
-            fontFamily = bookFamilyFor(block, settings, bookFonts)
-                ?: fontFamilyFor(settings.font, settings.customFontPath),
-            hyphens = if (hyphenate) Hyphens.Auto else Hyphens.None,
+            fontFamily = fontFamily,
+            hyphens = Hyphens.Auto,
             lineBreak = LineBreak.Paragraph,
 
 
@@ -219,31 +171,6 @@ object ReaderMetrics {
     }
 
 
-    private fun bookFamilyFor(
-        block: BlockStyle?,
-        settings: ReaderSettings,
-        bookFonts: Map<String, FontFamily>,
-    ): FontFamily? {
-        if (!settings.bookStyles) return null
-        val name = block?.fontFamily ?: return null
-        bookFonts[name]?.let { return it }
-        return when (name) {
-            "serif" -> FontFamily.Serif
-            "sans-serif" -> FontFamily.SansSerif
-            "monospace" -> FontFamily.Monospace
-            "cursive" -> FontFamily.Cursive
-            else -> null
-        }
-    }
-
-
-    private fun lineHeightMult(block: BlockStyle?, settings: ReaderSettings): Float =
-        if (settings.bookStyles && block?.lineHeightMult != null) {
-            block.lineHeightMult
-        } else {
-            settings.lineHeight
-        }
-
     private fun paragraphStyle(
         element: ContentElement.Paragraph,
         settings: ReaderSettings,
@@ -251,52 +178,22 @@ object ReaderMetrics {
         isParagraphStart: Boolean,
         base: TextStyle,
     ): TextStyle {
-        val block = element.block
         val kind = element.style
-
-        val scale = (block?.fontScale ?: 1f)
-        val italic = block?.italic ?: (kind != ParagraphStyle.NORMAL)
-        val bold = block?.bold ?: false
-
-        val defaultAlign = when (kind) {
-            ParagraphStyle.NORMAL ->
-                if (settings.justify) TextAlign.Justify else TextAlign.Start
-
-            else -> TextAlign.Start
-        }
-
-
-        val align = when (block?.align) {
-            BlockAlign.CENTER -> TextAlign.Center
-            BlockAlign.END -> TextAlign.End
-            BlockAlign.START -> if (settings.bookStyles) TextAlign.Start else defaultAlign
-            BlockAlign.JUSTIFY -> if (settings.bookStyles) TextAlign.Justify else defaultAlign
-            BlockAlign.LEFT -> TextAlign.Left
-            BlockAlign.RIGHT -> TextAlign.Right
-            null -> defaultAlign
-        }
-
-
-        val wantsIndent = when {
-            align == TextAlign.Center || align == TextAlign.End -> false
-            block?.firstLineIndent != null -> block.firstLineIndent == true
-            else -> kind == ParagraphStyle.NORMAL
-        }
-
-        val indentEm = if (settings.bookStyles && block?.firstLineIndentEm != null) {
-            block.firstLineIndentEm.coerceIn(0.4f, 4f)
-        } else {
-            1.4f
-        }
-
+        val normal = kind == ParagraphStyle.NORMAL
+        val block = element.block
+        val scale = block?.fontScale?.coerceIn(0.6f, 2.6f) ?: 1f
+        val defaultAlign = if (normal) TextAlign.Justify else TextAlign.Start
+        val align = textAlign(block?.align) ?: defaultAlign
         return base.copy(
             fontSize = (fontSize * scale).sp,
-            lineHeight = (fontSize * scale * lineHeightMult(block, settings)).sp,
-            fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
-            fontWeight = if (bold) FontWeight.Bold else null,
+            lineHeight = (fontSize * scale * (block?.lineHeightMult ?: settings.lineHeight)).sp,
+            fontStyle = if (block?.italic ?: !normal) FontStyle.Italic else FontStyle.Normal,
+            fontWeight = if (block?.bold == true) FontWeight.Bold else FontWeight.Normal,
             textAlign = align,
-            textIndent = if (wantsIndent && isParagraphStart) {
-                TextIndent(firstLine = (fontSize * indentEm).sp)
+            textIndent = if (normal && isParagraphStart &&
+                align != TextAlign.Center && align != TextAlign.End && block?.firstLineIndent != false
+            ) {
+                TextIndent(firstLine = (fontSize * 1.4f).sp)
             } else {
                 TextIndent.None
             },
@@ -310,35 +207,34 @@ object ReaderMetrics {
         base: TextStyle,
     ): TextStyle {
         val block = element.block
-
-
-        val scale = block?.fontScale ?: headingScale(element.level)
+        val scale = block?.fontScale?.coerceIn(0.6f, 2.6f) ?: headingScale(element.level)
         val defaultAlign = if (HeadingDefaults.isOrnament(element.text)) {
             TextAlign.Center
-        } else TextAlign.Start
-
-        val align = if (settings.centerHeadings) TextAlign.Center else when (block?.align) {
-            BlockAlign.CENTER -> TextAlign.Center
-            BlockAlign.END -> TextAlign.End
-            BlockAlign.START -> TextAlign.Start
-            BlockAlign.JUSTIFY -> TextAlign.Justify
-            BlockAlign.LEFT -> TextAlign.Left
-            BlockAlign.RIGHT -> TextAlign.Right
-            null -> defaultAlign
-        }
-        val lineMult = if (settings.bookStyles && block?.lineHeightMult != null) {
-            block.lineHeightMult
         } else {
-            1.25f
+            TextAlign.Start
         }
         return base.copy(
             fontSize = (fontSize * scale).sp,
-            lineHeight = (fontSize * scale * lineMult).sp,
+            lineHeight = (fontSize * scale * (block?.lineHeightMult ?: 1.25f)).sp,
             fontWeight = if (block?.bold == false) FontWeight.Normal else FontWeight.Bold,
             fontStyle = if (block?.italic == true) FontStyle.Italic else FontStyle.Normal,
-            textAlign = align,
+            textAlign = if (settings.centerHeadings) {
+                TextAlign.Center
+            } else {
+                textAlign(block?.align) ?: defaultAlign
+            },
             hyphens = Hyphens.None,
         )
+    }
+
+    private fun textAlign(align: BlockAlign?): TextAlign? = when (align) {
+        BlockAlign.START -> TextAlign.Start
+        BlockAlign.END -> TextAlign.End
+        BlockAlign.LEFT -> TextAlign.Left
+        BlockAlign.RIGHT -> TextAlign.Right
+        BlockAlign.CENTER -> TextAlign.Center
+        BlockAlign.JUSTIFY -> TextAlign.Justify
+        null -> null
     }
 
 
@@ -350,46 +246,6 @@ object ReaderMetrics {
 
     val tableCellPadding = 6.dp
 
-
-    fun dropCapStyle(
-        settings: ReaderSettings,
-        capFontSizeSp: Float,
-        cap: com.example.mobilereader.data.model.FirstLetterStyle?,
-        bookFonts: Map<String, FontFamily>,
-        language: String?,
-    ): TextStyle {
-        val resolvedLanguage = cap?.language ?: language
-        return TextStyle(
-            fontSize = capFontSizeSp.sp,
-            lineHeight = capFontSizeSp.sp,
-            fontFamily = if (settings.bookStyles) {
-                cap?.fontFamily?.let { family ->
-                    bookFonts[family] ?: when (family) {
-                        "serif" -> FontFamily.Serif
-                        "sans-serif", "sans" -> FontFamily.SansSerif
-                        "monospace" -> FontFamily.Monospace
-                        "cursive" -> FontFamily.Cursive
-                        else -> null
-                    }
-                }
-            } else {
-                null
-            } ?: fontFamilyFor(settings.font, settings.customFontPath),
-            fontWeight = if (cap?.bold == true) FontWeight.Bold else null,
-            fontStyle = if (cap?.italic == true) FontStyle.Italic else FontStyle.Normal,
-            localeList = resolvedLanguage?.let { LocaleList(it) },
-            textDirection = when (cap?.direction) {
-                BookTextDirection.LTR -> TextDirection.Ltr
-                BookTextDirection.RTL -> TextDirection.Rtl
-                BookTextDirection.AUTO, null -> autoTextDirection(resolvedLanguage)
-            },
-            platformStyle = PlatformTextStyle(includeFontPadding = false),
-            lineHeightStyle = LineHeightStyle(
-                alignment = LineHeightStyle.Alignment.Center,
-                trim = LineHeightStyle.Trim.Both,
-            ),
-        )
-    }
 
 
     fun tableCellStyle(
@@ -404,38 +260,17 @@ object ReaderMetrics {
     ): TextStyle {
 
 
-        val blockScale = cellBlock?.fontScale ?: tableBlock?.fontScale ?: 1f
-        val resolvedSize = fontSize * 0.92f * scale * blockScale
-        val publisherLineHeight = cellBlock?.lineHeightMult ?: tableBlock?.lineHeightMult
-        val resolvedLineHeight = if (settings.bookStyles && publisherLineHeight != null) {
-            publisherLineHeight
-        } else {
-            1.3f
-        }
-        val fontBlock = when {
-            cellBlock?.fontFamily != null -> cellBlock
-            else -> tableBlock
-        }
-        val resolvedBold = cellBlock?.bold ?: tableBlock?.bold
-        val resolvedItalic = cellBlock?.italic ?: tableBlock?.italic
+        val resolvedSize = fontSize * 0.92f * scale
         val resolvedLanguage = cellBlock?.language ?: tableBlock?.language ?: language
         val resolvedDirection = cellBlock?.direction ?: tableBlock?.direction
+        val authoredFontFamily = cellBlock?.fontFamily ?: tableBlock?.fontFamily
+        val fontFamily = authoredFontFamily?.let { family -> bookFonts[family] }
+            ?: fontFamilyFor(settings.font)
         return TextStyle(
             fontSize = resolvedSize.sp,
-            lineHeight = (resolvedSize * resolvedLineHeight).sp,
-            fontFamily = bookFamilyFor(fontBlock, settings, bookFonts)
-                ?: fontFamilyFor(settings.font, settings.customFontPath),
-            fontWeight = when {
-                resolvedBold == true -> FontWeight.Bold
-                resolvedBold == false -> FontWeight.Normal
-                header -> FontWeight.Bold
-                else -> null
-            },
-            fontStyle = when (resolvedItalic) {
-                true -> FontStyle.Italic
-                false -> FontStyle.Normal
-                null -> FontStyle.Normal
-            },
+            lineHeight = (resolvedSize * settings.lineHeight).sp,
+            fontFamily = fontFamily,
+            fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
             hyphens = Hyphens.None,
             lineBreak = LineBreak.Paragraph,
             localeList = resolvedLanguage?.let { LocaleList(it) },

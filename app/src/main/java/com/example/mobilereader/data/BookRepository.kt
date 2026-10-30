@@ -6,6 +6,7 @@ import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.BookContent
 import com.example.mobilereader.data.model.BookFormat
 import com.example.mobilereader.data.model.Bookmark
+import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.data.model.ReadingProgress
 import com.example.mobilereader.data.model.ReadingStatus
@@ -24,11 +25,16 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+internal val bookRepositoryJson = Json { ignoreUnknownKeys = true }
+
+internal fun decodeStoredBooks(serialized: String): List<Book> =
+    bookRepositoryJson.decodeFromString(serialized)
+
 class BookRepository(private val context: Context) {
     private val storedBooksFile = File(context.filesDir, "books.json")
     private val storedBooksDirectory = File(context.filesDir, "books")
     private val storedPicturesDirectory = File(context.filesDir, "pictures")
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = bookRepositoryJson
     private val writingLock = Mutex()
     private val mutableBooks = MutableStateFlow(readStoredBooks())
     val books: StateFlow<List<Book>> = mutableBooks
@@ -58,7 +64,7 @@ class BookRepository(private val context: Context) {
             val metadata = EpubParser.parseMetadata(temporaryBookFile)
             val temporaryPictures = File(context.cacheDir, "import-check-$bookId")
             try {
-                EpubParser.parseContent(temporaryBookFile, temporaryPictures)
+                requireSelectableEpubText(EpubParser.parseContent(temporaryBookFile, temporaryPictures))
             } finally {
                 temporaryPictures.deleteRecursively()
             }
@@ -172,6 +178,23 @@ class BookRepository(private val context: Context) {
     }
 
     private fun readStoredBooks(): List<Book> = runCatching {
-        if (storedBooksFile.isFile) json.decodeFromString<List<Book>>(storedBooksFile.readText()) else emptyList()
+        if (storedBooksFile.isFile) decodeStoredBooks(storedBooksFile.readText()) else emptyList()
     }.getOrDefault(emptyList())
+}
+
+internal fun requireSelectableEpubText(content: BookContent) {
+    val containsText = content.chapters.any { chapter ->
+        chapter.elements.any { element ->
+            val readableText = when (element) {
+                is ContentElement.Paragraph -> element.text.text
+                is ContentElement.Heading -> element.text
+                is ContentElement.Table -> element.flatText()
+                else -> ""
+            }
+            readableText.any(Char::isLetterOrDigit)
+        }
+    }
+    require(containsText) {
+        "EPUB has no selectable text and cannot be imported as a text book"
+    }
 }

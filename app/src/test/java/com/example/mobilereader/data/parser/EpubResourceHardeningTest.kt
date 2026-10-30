@@ -231,6 +231,33 @@ class EpubResourceHardeningTest {
     }
 
     @Test
+    fun `unobfuscated opentype font is extracted`() {
+        val file = epub(
+            "ordinary-otf.epub",
+            listOf(
+                Doc(
+                    "chapter.xhtml",
+                    html(
+                        "<link rel=\"stylesheet\" href=\"font.css\"/>",
+                        "<p>Readable chapter.</p>",
+                    ),
+                ),
+            ),
+            mapOf(
+                "font.css" to "@font-face { font-family: Ordinary; src: url(book.otf); }".toByteArray(),
+                "book.otf" to ("OTTO".toByteArray() + ByteArray(128)),
+            ),
+        )
+
+        val content = EpubParser.parseContent(file, temp.newFolder("ordinary-otf-images"))
+        val font = content.fonts.single()
+        assertEquals("ordinary", font.family)
+        assertTrue(File(font.path).readBytes().copyOfRange(0, 4).contentEquals("OTTO".toByteArray()))
+        assertTrue(content.chapters.single().elements.filterIsInstance<ContentElement.Paragraph>()
+            .any { it.text.text.contains("Readable chapter.") })
+    }
+
+    @Test
     fun `lossy path and Java hash aliases never return another EPUB resource`() {
         val svgAa = "<svg xmlns=\"http://www.w3.org/2000/svg\"><title>Aa</title></svg>"
         val svgBb = "<svg xmlns=\"http://www.w3.org/2000/svg\"><title>BB</title></svg>"

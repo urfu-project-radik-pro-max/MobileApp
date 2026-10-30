@@ -56,7 +56,7 @@ object ContextualTranslationContextBuilder {
             (SelectionText.elementText(items[lastSelectedIndex].element)?.length ?: 1) - 1
         }
         val candidateIndices = if (pages.isNullOrEmpty()) {
-            collectScrollContext(items, selection.start.itemIndex, contextPageCount)
+            collectApproximatePageContext(items, selection.start.itemIndex, contextPageCount)
         } else {
             collectPageContext(pages, lastSelectedIndex, lastSelectedOffset, contextPageCount)
         }
@@ -105,7 +105,7 @@ object ContextualTranslationContextBuilder {
             .distinct()
     }
 
-    private fun collectScrollContext(
+    private fun collectApproximatePageContext(
         items: List<ReaderItem>,
         selectedItemIndex: Int,
         contextPageCount: Int,

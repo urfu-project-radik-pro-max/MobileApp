@@ -5,13 +5,17 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import com.example.mobilereader.data.model.INLINE_IMAGE_CHAR
 import com.example.mobilereader.data.model.INLINE_IMAGE_ALT_TAG
+import com.example.mobilereader.data.model.INLINE_IMAGE_ID_TAG
+import com.example.mobilereader.data.model.INLINE_IMAGE_SIZE_TAG
 import com.example.mobilereader.data.model.INLINE_IMAGE_TAG
+import com.example.mobilereader.data.model.InlineImageSize
 
 
 class InlineTextBuilder {
     private val builder = AnnotatedString.Builder()
     private var lastWasSpace = true
     private var hasVisibleContent = false
+    private var nextImageId = 0
 
     fun text(raw: String) {
         if (raw.isEmpty()) return
@@ -47,13 +51,31 @@ class InlineTextBuilder {
     }
 
 
-    fun inlineImage(ref: String, altText: String? = null) {
+    fun inlineImage(
+        ref: String,
+        altText: String? = null,
+        size: InlineImageSize = InlineImageSize(),
+    ) {
         val alt = altText?.trim()?.takeIf { it.isNotEmpty() }
-        if (alt != null) builder.pushStringAnnotation(INLINE_IMAGE_ALT_TAG, alt)
+        val imageId = "inline-image-$nextImageId"
+        nextImageId += 1
+        if (alt != null) {
+            builder.pushStringAnnotation(INLINE_IMAGE_ALT_TAG, alt)
+        }
         builder.pushStringAnnotation(INLINE_IMAGE_TAG, ref)
-        builder.appendInlineContent(ref, INLINE_IMAGE_CHAR)
+        builder.pushStringAnnotation(INLINE_IMAGE_ID_TAG, imageId)
+        if (size.isSpecified) {
+            builder.pushStringAnnotation(INLINE_IMAGE_SIZE_TAG, size.annotationValue())
+        }
+        builder.appendInlineContent(imageId, INLINE_IMAGE_CHAR)
+        if (size.isSpecified) {
+            builder.pop()
+        }
         builder.pop()
-        if (alt != null) builder.pop()
+        builder.pop()
+        if (alt != null) {
+            builder.pop()
+        }
         mutableImageRefs += ref
         lastWasSpace = false
     }

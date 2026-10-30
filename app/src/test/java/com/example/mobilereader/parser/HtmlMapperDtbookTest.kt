@@ -76,7 +76,6 @@ class HtmlMapperDtbookTest {
         val paragraphs = elements.filterIsInstance<ContentElement.Paragraph>()
         assertTrue(paragraphs.any { it.text.text.startsWith("B. Ordered") })
         val nested = paragraphs.single { it.text.text == "iii. Nested ordered" }
-        assertEquals(1.2f, nested.block!!.indentStartEm, 0.01f)
         assertTrue(paragraphs.any { it.text.text == "Plain" })
         assertTrue(paragraphs.none { it.text.text.startsWith("• Plain") })
         assertEquals(

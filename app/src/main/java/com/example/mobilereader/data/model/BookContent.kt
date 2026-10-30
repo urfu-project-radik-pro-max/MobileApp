@@ -40,8 +40,36 @@ const val INLINE_IMAGE_TAG = "inlineImage"
 
 const val INLINE_IMAGE_ALT_TAG = "inlineImageAlt"
 
+const val INLINE_IMAGE_ID_TAG = "inlineImageId"
+
+const val INLINE_IMAGE_SIZE_TAG = "inlineImageSize"
+
 
 const val INLINE_IMAGE_CHAR = "\uFFFC"
+
+data class InlineImageSize(
+    val widthFrac: Float? = null,
+    val widthEm: Float? = null,
+    val heightEm: Float? = null,
+) {
+    val isSpecified: Boolean
+        get() = widthFrac != null || widthEm != null || heightEm != null
+
+    fun annotationValue(): String = listOf(widthFrac, widthEm, heightEm)
+        .joinToString(";") { dimension -> dimension?.toString().orEmpty() }
+
+    companion object {
+        fun fromAnnotationValue(value: String): InlineImageSize? {
+            val parts = value.split(';')
+            if (parts.size != 3) return null
+            return InlineImageSize(
+                widthFrac = parts[0].toFloatOrNull(),
+                widthEm = parts[1].toFloatOrNull(),
+                heightEm = parts[2].toFloatOrNull(),
+            )
+        }
+    }
+}
 
 
 class BookContent(
@@ -66,9 +94,6 @@ class BookContent(
     val navigation: List<BookNavigationEntry> = emptyList(),
 
 
-    val publisherPublication: PublisherPublication? = null,
-
-
     val pageProgression: PageProgression = PageProgression.DEFAULT,
 ) {
     val totalElements: Int = chapters.sumOf { it.elements.size }
@@ -77,8 +102,6 @@ class BookContent(
 
 data class NoteDocument(
     val elements: List<ContentElement>,
-
-    val publisherBoxes: List<PublisherBoxSpan> = emptyList(),
 ) {
 
     val text: String
@@ -100,8 +123,6 @@ class LinkedDocument(
     val id: String,
     val title: String?,
     val elements: List<ContentElement>,
-
-    val publisherBoxes: List<PublisherBoxSpan> = emptyList(),
 )
 
 
@@ -145,8 +166,6 @@ class Chapter(
 
 
     val depth: Int = 0,
-
-    val publisherBoxes: List<PublisherBoxSpan> = emptyList(),
 )
 
 sealed interface ContentElement {
@@ -176,15 +195,10 @@ sealed interface ContentElement {
 
     data class Image(
         val path: String,
+        val altText: String? = null,
         val widthFrac: Float? = null,
-
         val widthEm: Float? = null,
         val heightEm: Float? = null,
-
-        val altText: String? = null,
-
-        val spaceBeforeSpecified: Boolean = false,
-        val spaceAfterSpecified: Boolean = false,
     ) : ContentElement
 
     data object Divider : ContentElement
@@ -231,12 +245,6 @@ class TableCell(
 
 
     val block: BlockStyle? = null,
-
-    val publisherBox: PublisherBoxStyle? = null,
-
-    val publisherPaddingSpecified: Boolean = false,
-
-    val publisherBorderSpecified: Boolean = false,
 )
 
 enum class ParagraphStyle { NORMAL, QUOTE, POEM }
@@ -272,38 +280,13 @@ data class BlockStyle(
 
     val fontScale: Float? = null,
 
-    val indentStartFrac: Float = 0f,
-    val indentStartEm: Float = 0f,
-    val indentEndFrac: Float = 0f,
-    val indentEndEm: Float = 0f,
-
-    val indentLeftFrac: Float = 0f,
-    val indentLeftEm: Float = 0f,
-    val indentRightFrac: Float = 0f,
-    val indentRightEm: Float = 0f,
-
     val firstLineIndent: Boolean? = null,
-
-    val firstLineIndentEm: Float? = null,
-
-    val spaceBeforeEm: Float = 0f,
-    val spaceAfterEm: Float = 0f,
-
-
-    val spaceBeforeSpecified: Boolean = false,
-    val spaceAfterSpecified: Boolean = false,
 
     val fontFamily: String? = null,
 
     val lineHeightMult: Float? = null,
 
     val hyphens: Boolean? = null,
-
-    val pageBreakBefore: Boolean = false,
-
-    val firstLetter: FirstLetterStyle? = null,
-
-    val floatImage: FloatImage? = null,
 
     val language: String? = null,
 
@@ -322,38 +305,6 @@ data class BlockStyle(
 }
 
 
-data class FloatImage(
-
-    val path: String,
-
-    val widthFrac: Float,
-    val left: Boolean,
-    val altText: String? = null,
-)
-
-
-data class FirstLetterStyle(
-
-    val scale: Float,
-    val bold: Boolean? = null,
-    val italic: Boolean? = null,
-    val isDropCap: Boolean,
-
-    val fontFamily: String? = null,
-
-    val foregroundColorArgb: Int? = null,
-    val backgroundColorArgb: Int? = null,
-
-    val leftSide: Boolean = true,
-
-    val direction: BookTextDirection? = null,
-    val language: String? = null,
-
-
-    val sourceTextLength: Int? = null,
-)
-
-
 fun AnnotatedString.withFootnoteRefStyle(): AnnotatedString {
     val refs = getStringAnnotations(FOOTNOTE_TAG, 0, length)
     if (refs.isEmpty()) return this
@@ -368,19 +319,5 @@ fun AnnotatedString.withFootnoteRefStyle(): AnnotatedString {
             ref.end,
         )
     }
-    return builder.toAnnotatedString()
-}
-
-
-fun AnnotatedString.withoutFootnotes(): AnnotatedString {
-    val refs = getStringAnnotations(FOOTNOTE_TAG, 0, length).sortedBy { it.start }
-    if (refs.isEmpty()) return this
-    val builder = AnnotatedString.Builder()
-    var position = 0
-    for (ref in refs) {
-        if (ref.start > position) builder.append(subSequence(position, ref.start))
-        position = maxOf(position, ref.end)
-    }
-    if (position < length) builder.append(subSequence(position, length))
     return builder.toAnnotatedString()
 }

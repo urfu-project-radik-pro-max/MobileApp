@@ -16,23 +16,14 @@ import org.junit.Test
 
 class BidiSupportTest {
 
-    private data class MappedDocument(
-        val elements: List<ContentElement>,
-        val boxes: List<com.example.mobilereader.data.model.PublisherBoxSpan>,
-    )
-
-    private fun mappedDocument(html: String, css: String? = null): MappedDocument {
+    private fun mapped(html: String, css: String? = null): List<ContentElement> {
         val mapper = HtmlMapper(
             resolveImage = { null },
             resolveLink = { href -> "OPS/ch.xhtml$href" },
             css = css?.let { CssResolver(listOf(CssResolver.Sheet(it))) },
         )
-        val elements = mapper.map(Jsoup.parse(html).body())
-        return MappedDocument(elements, mapper.publisherBoxes)
+        return mapper.map(Jsoup.parse(html).body())
     }
-
-    private fun mapped(html: String, css: String? = null): List<ContentElement> =
-        mappedDocument(html, css).elements
 
     @Test
     fun `arabic and hebrew blocks preserve clean text and explicit directions`() {
@@ -180,45 +171,6 @@ class BidiSupportTest {
             listOf(BlockAlign.START, BlockAlign.END, BlockAlign.LEFT, BlockAlign.RIGHT),
             paragraphs.map { it.block?.align },
         )
-    }
-
-    @Test
-    fun `logical and physical horizontal css insets remain distinct`() {
-        val mapped = mappedDocument(
-            "<p class='physical' dir='rtl'>physical</p>" +
-                "<p class='logical' dir='rtl'>logical</p>",
-            css = ".physical{margin-left:2em;margin-right:1em}" +
-                ".logical{margin-inline-start:3em;margin-inline-end:0.5em}",
-        )
-
-        val physical = mapped.boxes.single { it.startElement == 0 && it.endElementExclusive == 1 }
-            .style
-        assertEquals(2f, physical.marginLeftEm, 0.001f)
-        assertEquals(1f, physical.marginRightEm, 0.001f)
-        val logical = mapped.boxes.single { it.startElement == 1 && it.endElementExclusive == 2 }
-            .style
-
-        assertEquals(0.5f, logical.marginLeftEm, 0.001f)
-        assertEquals(3f, logical.marginRightEm, 0.001f)
-    }
-
-    @Test
-    fun `logical and physical aliases obey cascade instead of double counting`() {
-        val mapped = mappedDocument(
-            "<p class='later' dir='ltr'>later</p>" +
-                "<p class='important' dir='ltr'>important</p>" +
-                "<p class='rtl' dir='rtl'>rtl</p>",
-            css = ".later{margin-left:2em;margin-inline-start:3em}" +
-                ".important{margin-left:2em!important;margin-inline-start:3em}" +
-                ".rtl{margin-right:1em;margin-inline-start:4em}",
-        )
-
-        fun styleAt(index: Int) = mapped.boxes.single {
-            it.startElement == index && it.endElementExclusive == index + 1
-        }.style
-        assertEquals(3f, styleAt(0).marginLeftEm, 0.001f)
-        assertEquals(2f, styleAt(1).marginLeftEm, 0.001f)
-        assertEquals(4f, styleAt(2).marginRightEm, 0.001f)
     }
 
     private fun isBidiControl(char: Char): Boolean = char in setOf(

@@ -2,138 +2,25 @@ package com.example.mobilereader.ui.reader
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.mobilereader.R
-import com.example.mobilereader.data.TranslationSettings
 import com.example.mobilereader.data.translation.ContextualTranslationProblem
 import com.example.mobilereader.data.translation.ContextualTranslationResult
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ContextualTranslationSettingsSheet(
-    settings: TranslationSettings,
-    onSave: (TranslationSettings) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var contextPageCount by remember(settings) { mutableIntStateOf(settings.contextPageCount) }
-    var instruction by remember(settings) { mutableStateOf(settings.instruction) }
-    var serverAddress by remember(settings) { mutableStateOf(settings.serverAddress) }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.contextual_translation_settings),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            Text(
-                text = stringResource(R.string.contextual_translation_page_count_description),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { contextPageCount = (contextPageCount - 1).coerceAtLeast(1) },
-                    enabled = contextPageCount > 1,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Remove,
-                        contentDescription = stringResource(R.string.contextual_translation_fewer_pages),
-                    )
-                }
-                Text(
-                    text = pluralStringResource(
-                        R.plurals.contextual_translation_page_count,
-                        contextPageCount,
-                        contextPageCount,
-                    ),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
-                IconButton(
-                    onClick = { contextPageCount = (contextPageCount + 1).coerceAtMost(5) },
-                    enabled = contextPageCount < 5,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Add,
-                        contentDescription = stringResource(R.string.contextual_translation_more_pages),
-                    )
-                }
-            }
-            OutlinedTextField(
-                value = instruction,
-                onValueChange = { instruction = it.take(2000) },
-                label = { Text(stringResource(R.string.contextual_translation_instruction)) },
-                supportingText = {
-                    Text(stringResource(R.string.contextual_translation_instruction_description))
-                },
-                minLines = 3,
-                maxLines = 6,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = serverAddress,
-                onValueChange = { serverAddress = it },
-                label = { Text(stringResource(R.string.contextual_translation_server_address)) },
-                supportingText = {
-                    Text(stringResource(R.string.contextual_translation_server_description))
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(
-                onClick = {
-                    onSave(
-                        TranslationSettings(
-                            contextPageCount = contextPageCount,
-                            instruction = instruction.trim(),
-                            serverAddress = serverAddress.trim(),
-                        ),
-                    )
-                    onDismiss()
-                },
-                modifier = Modifier.align(Alignment.End),
-            ) {
-                Text(stringResource(R.string.contextual_translation_save))
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -7,12 +7,55 @@ import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.ui.reader.readerColors
 import com.example.mobilereader.ui.reader.contentsRowBackground
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.graphics.luminance
 import org.junit.Test
 
 class ThemePaletteTest {
+
+    private fun contrast(first: Color, second: Color): Float {
+        val firstLuminance = first.luminance()
+        val secondLuminance = second.luminance()
+        return (maxOf(firstLuminance, secondLuminance) + 0.05f) /
+            (minOf(firstLuminance, secondLuminance) + 0.05f)
+    }
+
+    @Test
+    fun `fixed White palette uses the Figma roles`() {
+        val scheme = colorSchemeFor(AppTheme.WHITE)
+
+        assertEquals(Color(0xFF526B5D), FixedWhiteColors.primary)
+        assertEquals(Color(0xFF7D9184), FixedWhiteColors.secondary)
+        assertEquals(Color(0xFFA47B69), FixedWhiteColors.tertiary)
+        assertEquals(Color(0xFFFAF7F0), FixedWhiteColors.background)
+        assertEquals(Color(0xFF292923), FixedWhiteColors.text)
+        assertEquals(Color(0xFFE4EBDD), FixedWhiteColors.idiomHighlight)
+        assertEquals(FixedWhiteColors.primary, scheme.primary)
+        assertEquals(FixedWhiteColors.secondary, scheme.secondary)
+        assertEquals(FixedWhiteColors.tertiary, scheme.tertiary)
+        assertEquals(FixedWhiteColors.background, scheme.background)
+        assertEquals(FixedWhiteColors.background, scheme.surface)
+        assertEquals(FixedWhiteColors.text, scheme.onBackground)
+        assertEquals(FixedWhiteColors.text, scheme.onSurface)
+        assertEquals(FixedWhiteColors.background to FixedWhiteColors.primary, AppTheme.WHITE.swatch)
+    }
+
+    @Test
+    fun `fixed White labels and controls meet text contrast`() {
+        val scheme = colorSchemeFor(AppTheme.WHITE)
+
+        assertTrue(contrast(scheme.primary, scheme.background) >= 4.5f)
+        assertTrue(contrast(scheme.onPrimary, scheme.primary) >= 4.5f)
+        assertTrue(contrast(scheme.onSecondary, scheme.secondary) >= 4.5f)
+        assertTrue(contrast(scheme.onTertiary, scheme.tertiary) >= 4.5f)
+        assertTrue(contrast(scheme.onSurfaceVariant, scheme.background) >= 4.5f)
+        assertTrue(contrast(scheme.onPrimaryContainer, scheme.primaryContainer) >= 4.5f)
+        assertTrue(contrast(scheme.onSecondaryContainer, scheme.secondaryContainer) >= 4.5f)
+        assertTrue(contrast(scheme.onTertiaryContainer, scheme.tertiaryContainer) >= 4.5f)
+        assertTrue(contrast(scheme.error, scheme.background) >= 4.5f)
+    }
 
     @Test
     fun `reader colors compare by value to preserve decorated text caches`() {
@@ -23,11 +66,6 @@ class ThemePaletteTest {
 
     @Test
     fun `contents title foregrounds contrast against all three reader palettes`() {
-        fun contrast(a: Color, b: Color): Float {
-            val x = a.luminance()
-            val y = b.luminance()
-            return (maxOf(x, y) + 0.05f) / (minOf(x, y) + 0.05f)
-        }
         AppTheme.entries.forEach { theme ->
             val scheme = colorSchemeFor(theme)
             assertTrue("$theme chapter", contrast(scheme.onSurface, scheme.surfaceContainerLow) >= 4.5f)
@@ -111,10 +149,13 @@ class ThemePaletteTest {
         val colors = readerColors(AppTheme.WHITE, chromeScheme = systemBlueScheme)
         val pageScheme = colorSchemeFor(AppTheme.WHITE)
 
-        assertEquals(Color.White, colors.background)
+        assertEquals(FixedWhiteColors.background, colors.background)
         assertEquals(pageScheme.onSurface, colors.text)
         assertEquals(systemBlueScheme.surfaceContainerHigh, colors.chrome)
         assertEquals(systemBlueScheme.primary, colors.accent)
+        assertEquals(FixedWhiteColors.idiomHighlight, colors.idiomHighlight)
+        assertNotEquals(colors.idiomHighlight, colors.quoteHighlight)
+        assertNotEquals(colors.idiomHighlight, colors.selection)
     }
 
     @Test

@@ -28,7 +28,6 @@ import com.example.mobilereader.data.model.previewText
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.data.model.ReadingProgress
 import com.example.mobilereader.data.model.withFootnoteRefStyle
-import com.example.mobilereader.data.model.withoutFootnotes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -51,14 +50,6 @@ import java.util.UUID
 class ReaderItem(
     val chapterIndex: Int,
     val element: ContentElement,
-
-    val publisherBoxes: List<ReaderPublisherBox> = emptyList(),
-
-    val publisherFloat: ReaderPublisherFloat? = null,
-
-    val suppressedByPublisherFloat: Boolean = false,
-    val publisherClearBefore: com.example.mobilereader.data.model.PublisherClear =
-        com.example.mobilereader.data.model.PublisherClear.NONE,
 )
 
 
@@ -107,8 +98,6 @@ sealed interface ReaderState {
 
         val navigation: List<ReaderNavigationEntry> = emptyList(),
 
-        val publisherStyle: com.example.mobilereader.data.model.PublisherStyle? = null,
-
         val bookFonts: Map<String, androidx.compose.ui.text.font.FontFamily> = emptyMap(),
 
         val embeddedFontSignature: String = embeddedFontSignature(emptyList()),
@@ -154,7 +143,9 @@ class ReaderViewModel(
         kotlinx.coroutines.flow.combine(
             settingsRepository.settings, book, settingsRepository.appSettings,
         ) { global, current, app ->
-            (current?.readerSettings ?: global).copy(centerHeadings = app.centerHeadings)
+            (current?.readerSettings ?: global).copy(
+                centerHeadings = app.centerHeadings,
+            )
         }.stateIn(viewModelScope, SharingStarted.Eagerly, ReaderSettings())
 
     val appSettings: StateFlow<AppSettings> = settingsRepository.appSettings
@@ -193,10 +184,6 @@ class ReaderViewModel(
     var currentCharOffset: Int = 0
         private set
 
-
-    var currentScrollOffset: Int = 0
-        private set
-
     private val navigationSession = ReaderNavigationSession(
         viewModelScope, android.os.SystemClock::elapsedRealtime,
     )
@@ -219,9 +206,8 @@ class ReaderViewModel(
     }
 
 
-    fun observeVisiblePosition(flatIndex: Int, scrollOffset: Int, charOffset: Int = 0) {
+    fun observeVisiblePosition(flatIndex: Int, charOffset: Int = 0) {
         currentFlatIndex = flatIndex
-        currentScrollOffset = scrollOffset
         currentCharOffset = charOffset
     }
 
@@ -301,14 +287,12 @@ class ReaderViewModel(
                 _state.value = ReaderState.Error
                 return@launch
             }
-            currentFlatIndex = book.progress.elementIndex
-            currentScrollOffset = book.progress.scrollOffset
             clearNavigationHistory()
             runCatching { repository.loadContent(book) }
                 .onSuccess { content ->
                     loadedBook = book
                     loadedContent = content
-                    rebuildReady()
+                    rebuildReady(book.progress)
 
 
                     repository.noteOpened(bookId) { settingsRepository.settings.first() }
@@ -318,10 +302,9 @@ class ReaderViewModel(
     }
 
 
-    private suspend fun rebuildReady() {
+    private suspend fun rebuildReady(restoredProgress: ReadingProgress? = null) {
         val book = loadedBook ?: return
         val content = loadedContent ?: return
-        val hideFootnotes = settings.value.hideFootnotes
         withContext(Dispatchers.Main.immediate) {
 
             searchJob?.cancel()
@@ -330,14 +313,21 @@ class ReaderViewModel(
 
             clearNavigationHistory()
         }
-        val next = withContext(Dispatchers.Default) { buildReady(book, content, hideFootnotes) }
-        withContext(Dispatchers.Main.immediate) { _state.value = next }
+        val next = withContext(Dispatchers.Default) { buildReady(book, content) }
+        withContext(Dispatchers.Main.immediate) {
+            if (restoredProgress != null) {
+                val restored = (next as? ReaderState.Ready)
+                    ?.resolvePosition(restoredProgress.textPosition)
+                currentFlatIndex = restored?.itemIndex ?: 0
+                currentCharOffset = restored?.charOffset ?: 0
+            }
+            _state.value = next
+        }
     }
 
     private fun buildReady(
         book: Book,
         content: BookContent,
-        hideFootnotes: Boolean,
     ): ReaderState {
 
 
@@ -354,7 +344,7 @@ class ReaderViewModel(
         val chapterTitles = mutableListOf<String?>()
         val chapterDepths = mutableListOf<Int>()
         fun adjustedText(text: androidx.compose.ui.text.AnnotatedString) =
-            if (hideFootnotes) text.withoutFootnotes() else text.withFootnoteRefStyle()
+            text.withFootnoteRefStyle()
         fun adjusted(element: ContentElement): ContentElement = when (element) {
             is ContentElement.Paragraph -> element.copy(text = adjustedText(element.text))
             is ContentElement.Heading -> element.copy(
@@ -371,9 +361,6 @@ class ReaderViewModel(
                                 align = cell.align,
                                 header = cell.header,
                                 block = cell.block,
-                                publisherBox = cell.publisherBox,
-                                publisherPaddingSpecified = cell.publisherPaddingSpecified,
-                                publisherBorderSpecified = cell.publisherBorderSpecified,
                             )
                         },
                         isHeader = row.isHeader,
@@ -387,62 +374,15 @@ class ReaderViewModel(
             chapterTitles += chapter.title
             chapterDepths += chapter.depth
             val adjustedElements = chapter.elements.map(::adjusted)
-            val plan = planPublisherChapter(adjustedElements, chapter.publisherBoxes)
-            val itemOffset = items.size
-            adjustedElements.forEachIndexed { elementIndex, element ->
-                val plannedFloat = plan.floatByTarget[elementIndex]
-                items += ReaderItem(
-                    chapterIndex = index,
-                    element = element,
-                    publisherBoxes = plan.boxesByElement[elementIndex],
-                    publisherFloat = plannedFloat?.let { float ->
-                        ReaderPublisherFloat(
-                            side = float.side,
-                            style = float.style,
-                            contents = float.contents.map { content ->
-                                ReaderPublisherFloatContent(
-                                    sourceItemIndex = itemOffset + content.sourceElementIndex,
-                                    element = content.element,
-                                    publisherBoxes = content.publisherBoxes,
-                                )
-                            },
-                        )
-                    },
-                    suppressedByPublisherFloat = elementIndex in plan.suppressedElements,
-                    publisherClearBefore = plan.clearBefore[elementIndex],
-                )
-            }
+            items += chapterReaderItems(index, adjustedElements)
         }
 
         val linkedDocuments = content.linkedDocuments.mapValues { (_, document) ->
             val adjustedElements = document.elements.map(::adjusted)
-            val plan = planPublisherChapter(adjustedElements, document.publisherBoxes)
             ReaderLinkedDocument(
                 id = document.id,
                 title = document.title,
-                items = adjustedElements.mapIndexed { elementIndex, element ->
-                    val plannedFloat = plan.floatByTarget[elementIndex]
-                    ReaderItem(
-                        chapterIndex = 0,
-                        element = element,
-                        publisherBoxes = plan.boxesByElement[elementIndex],
-                        publisherFloat = plannedFloat?.let { float ->
-                            ReaderPublisherFloat(
-                                side = float.side,
-                                style = float.style,
-                                contents = float.contents.map { content ->
-                                    ReaderPublisherFloatContent(
-                                        sourceItemIndex = content.sourceElementIndex,
-                                        element = content.element,
-                                        publisherBoxes = content.publisherBoxes,
-                                    )
-                                },
-                            )
-                        },
-                        suppressedByPublisherFloat = elementIndex in plan.suppressedElements,
-                        publisherClearBefore = plan.clearBefore[elementIndex],
-                    )
-                },
+                items = chapterReaderItems(0, adjustedElements),
             )
         }
         val navigation = content.navigation.mapNotNull { entry ->
@@ -491,15 +431,10 @@ class ReaderViewModel(
                 chapterStarts = chapterStarts,
                 chapterTitles = chapterTitles,
                 chapterDepths = chapterDepths,
-                notes = if (hideFootnotes) {
-                    emptyMap()
-                } else {
-                    content.notes.mapValues { (_, note) ->
-                        NoteDocument(
-                            elements = note.elements.map(::adjusted),
-                            publisherBoxes = note.publisherBoxes,
-                        )
-                    }
+                notes = content.notes.mapValues { (_, note) ->
+                    NoteDocument(
+                        elements = note.elements.map(::adjusted),
+                    )
                 },
 
                 linkTargets = content.linkTargets.mapNotNull { (key, target) ->
@@ -521,7 +456,6 @@ class ReaderViewModel(
                     content.pageProgression,
                     content.language,
                 ),
-                publisherStyle = com.example.mobilereader.data.model.publisherStyleOf(content),
             )
         }
     }
@@ -579,10 +513,7 @@ class ReaderViewModel(
         translationJob?.cancel()
         val ready = state.value as? ReaderState.Ready ?: return
         val currentSettings = translationSettings.value
-        val pages = pagination.value?.takeIf { holder ->
-            settings.value.readingMode == com.example.mobilereader.data.ReadingMode.PAGES &&
-                !holder.partial
-        }?.pages
+        val pages = pagination.value?.takeIf { holder -> !holder.partial }?.pages
         val context = try {
             ContextualTranslationContextBuilder.build(
                 items = ready.items,
@@ -638,23 +569,31 @@ class ReaderViewModel(
         settingsRepository.updateApp { it.copy(defaultTranslator = component) }
     }
 
-    fun saveProgress(firstVisibleIndex: Int, scrollOffset: Int, charOffset: Int = 0) {
+    fun saveProgress(firstVisibleIndex: Int, charOffset: Int = 0) {
         val ready = _state.value as? ReaderState.Ready ?: return
-        observeVisiblePosition(firstVisibleIndex, scrollOffset, charOffset)
-        val fraction = if (ready.items.size <= 1) {
-            0f
+        val position = ready.savedPosition(firstVisibleIndex, charOffset) ?: return
+        observeVisiblePosition(firstVisibleIndex, charOffset)
+        val fullPages = _pagination.value?.takeIf { holder -> !holder.partial }?.pages
+        val currentPage = fullPages?.let { pages ->
+            ReaderNavigationPolicy.pageIndexForLocation(
+                pages,
+                ReaderReturnLocation.Main(firstVisibleIndex, charOffset),
+            )
+        }
+        val fraction = if (currentPage != null && fullPages.size > 1) {
+            currentPage.toFloat() / (fullPages.size - 1)
         } else {
-            (firstVisibleIndex.toFloat() / (ready.items.size - 1)).coerceIn(0f, 1f)
+            ready.book.progress.fraction
         }
         val chapter = ready.chapterAt(firstVisibleIndex)
-        val pageCounts = pageCountsFor(ready, chapter, firstVisibleIndex)
+        val pageCounts = pageCountsFor(ready, chapter, firstVisibleIndex, charOffset)
         val progress = ReadingProgress(
             chapterIndex = chapter,
             elementIndex = firstVisibleIndex,
-            scrollOffset = scrollOffset,
             fraction = fraction,
             pagesLeftInChapter = pageCounts.first,
             totalPages = pageCounts.second,
+            textPosition = position,
         )
         viewModelScope.launch { repository.saveProgress(bookId, progress) }
     }
@@ -664,36 +603,24 @@ class ReaderViewModel(
         ready: ReaderState.Ready,
         chapter: Int,
         firstVisibleIndex: Int,
+        charOffset: Int,
     ): Pair<Int, Int> {
         val holder = _pagination.value ?: return -1 to 0
         if (holder.partial) return -1 to 0
         val pages = holder.pages
         if (pages.isEmpty()) return -1 to 0
 
-        val currentPage = lastPageStartingAtOrBefore(pages, firstVisibleIndex)
+        val currentPage = ReaderNavigationPolicy.pageIndexForLocation(
+            pages,
+            ReaderReturnLocation.Main(firstVisibleIndex, charOffset),
+        ) ?: return -1 to 0
         val chapterEnd = ready.chapterStarts.getOrNull(chapter + 1) ?: ready.items.size
-
-
-        val lastPageOfChapter = lastPageStartingAtOrBefore(pages, chapterEnd - 1)
+        val lastPageOfChapter = ReaderNavigationPolicy.pageIndexForLocation(
+            pages,
+            ReaderReturnLocation.Main(chapterEnd - 1, Int.MAX_VALUE),
+        ) ?: return -1 to 0
 
         return (lastPageOfChapter - currentPage).coerceAtLeast(0) to pages.size
-    }
-
-
-    private fun lastPageStartingAtOrBefore(pages: List<BookPage>, flatIndex: Int): Int {
-        var low = 0
-        var high = pages.size - 1
-        var found = 0
-        while (low <= high) {
-            val mid = (low + high) ushr 1
-            if (pages[mid].firstItemIndex <= flatIndex) {
-                found = mid
-                low = mid + 1
-            } else {
-                high = mid - 1
-            }
-        }
-        return found
     }
 
 
@@ -713,13 +640,17 @@ class ReaderViewModel(
     val bookmarkWindow = 4
 
     fun bookmarkNear(flatIndex: Int): Bookmark? =
-        book.value?.bookmarks?.firstOrNull {
-            it.flatIndex in flatIndex..(flatIndex + bookmarkWindow)
+        (state.value as? ReaderState.Ready)?.let { ready ->
+            book.value?.bookmarks?.firstOrNull { bookmark ->
+                ready.bookmarkAnchor(bookmark)?.itemIndex in flatIndex..(flatIndex + bookmarkWindow)
+            }
         }
 
 
     fun toggleBookmarkAt(flatIndex: Int) {
         val ready = _state.value as? ReaderState.Ready ?: return
+        val charOffset = currentCharOffset.takeIf { currentFlatIndex == flatIndex } ?: 0
+        val position = ready.savedPosition(flatIndex, charOffset) ?: return
         val existing = bookmarkNear(flatIndex)
         viewModelScope.launch {
             if (existing != null) {
@@ -733,6 +664,7 @@ class ReaderViewModel(
                         chapterIndex = ready.chapterAt(flatIndex),
                         preview = previewAt(ready, flatIndex),
                         createdAtMillis = System.currentTimeMillis(),
+                        textPosition = position,
                     ),
                 )
             }
@@ -744,8 +676,15 @@ class ReaderViewModel(
     }
 
     fun addQuote(text: String, chapterIndex: Int, range: BookSelection) {
+        val ready = _state.value as? ReaderState.Ready ?: return
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
+        val startPosition = ready.savedPosition(range.start.itemIndex, range.start.charOffset) ?: return
+        val endPosition = ready.savedPosition(range.end.itemIndex, range.end.charOffset) ?: return
+        if (com.example.mobilereader.ui.reader.selection.SelectionText.extract(
+                range, ready.items.size,
+            ) { ready.items[it].element } != trimmed
+        ) return
         viewModelScope.launch {
             repository.addQuote(
                 bookId,
@@ -758,6 +697,8 @@ class ReaderViewModel(
                     startChar = range.start.charOffset,
                     endItem = range.end.itemIndex,
                     endChar = range.end.charOffset,
+                    startPosition = startPosition,
+                    endPosition = endPosition,
                 ),
             )
         }
@@ -785,12 +726,6 @@ class ReaderViewModel(
                 }
         }
 
-        viewModelScope.launch {
-            settings
-                .map { it.hideFootnotes }
-                .distinctUntilChanged()
-                .collect { if (loadedContent != null) rebuildReady() }
-        }
     }
 
     companion object {
@@ -811,6 +746,11 @@ class ReaderViewModel(
         }
     }
 }
+
+internal fun chapterReaderItems(
+    chapterIndex: Int,
+    elements: List<ContentElement>,
+): List<ReaderItem> = elements.map { element -> ReaderItem(chapterIndex, element) }
 
 
 internal fun BookContent.hasSequentialContent(): Boolean =

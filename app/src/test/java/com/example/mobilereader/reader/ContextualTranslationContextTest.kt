@@ -84,6 +84,26 @@ class ContextualTranslationContextTest {
         assertEquals("selected page", result.context)
     }
 
+    @Test
+    fun usesPrecedingTextWhileThePageMapIsUnavailable() {
+        val items = listOf(
+            paragraph("preceding paragraph"),
+            paragraph("selected paragraph"),
+            paragraph("following paragraph"),
+        )
+        val selection = BookSelection(BookAnchor(1, 0), BookAnchor(1, 8))
+
+        val result = ContextualTranslationContextBuilder.build(
+            items = items,
+            selection = selection,
+            contextPageCount = 1,
+            pages = null,
+        )
+
+        assertEquals("selected", result.selectedText)
+        assertEquals("preceding paragraph\n\nselected paragraph", result.context)
+    }
+
     private fun paragraph(text: String): ReaderItem = ReaderItem(
         chapterIndex = 0,
         element = ContentElement.Paragraph(AnnotatedString(text)),

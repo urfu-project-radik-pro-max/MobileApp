@@ -30,7 +30,7 @@ class ReaderNavigationHistoryTest {
     @Test
     fun `history restores exact main and linked locations in reverse jump order`() {
         val history = ReaderNavigationHistory()
-        val main = ReaderReturnLocation.Main(42, charOffset = 17, scrollOffset = 93)
+        val main = ReaderReturnLocation.Main(42, charOffset = 17)
         val linked = ReaderReturnLocation.Linked("OPS/notes.xhtml", 5, scrollOffset = 31)
 
         history.push(main)
@@ -82,7 +82,7 @@ class ReaderNavigationHistoryTest {
     @Test
     fun `clear removes contextual return affordance`() {
         val history = ReaderNavigationHistory()
-        history.push(ReaderReturnLocation.Main(9, 4, 2))
+        history.push(ReaderReturnLocation.Main(9, 4))
 
         history.clear()
 

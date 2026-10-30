@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.data.ReaderSettings
+import com.example.mobilereader.data.TranslationSettings
 import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.ui.preview.PreviewBooks
 import com.example.mobilereader.ui.theme.MobileReaderTheme
@@ -56,6 +57,8 @@ private fun ReaderControlsPreview() {
     MobileReaderTheme(AppTheme.WHITE) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
             ReaderSettingsControls(
+                selectedCategoryIndex = 0,
+                onCategorySelected = {},
                 settings = ReaderSettings(),
                 appSettings = AppSettings(),
                 colors = readerColors(AppTheme.WHITE),
@@ -63,7 +66,8 @@ private fun ReaderControlsPreview() {
                 onUpdate = {},
                 onUpdateApp = {},
                 onBrightnessChange = {},
-                onTranslationSettings = {},
+                translationSettings = TranslationSettings(),
+                onSaveTranslationSettings = {},
             )
         }
     }

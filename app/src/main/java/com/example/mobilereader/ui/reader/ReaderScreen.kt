@@ -13,16 +13,14 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
@@ -57,6 +55,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -101,7 +100,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.AbsoluteAlignment
@@ -114,9 +112,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -155,13 +150,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.Velocity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.os.SystemClock
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -169,13 +165,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import com.example.mobilereader.MainActivity
+import com.example.mobilereader.VolumeKeyPhase
 import com.example.mobilereader.R
 import com.example.mobilereader.ui.theme.appColorSchemeFor
 import com.example.mobilereader.ui.theme.MobileReaderTheme
 import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.data.ReaderSettings
-import com.example.mobilereader.data.ReadingMode
+import com.example.mobilereader.data.TranslationSettings
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.EXTERNAL_LINK_TAG
@@ -183,10 +180,10 @@ import com.example.mobilereader.data.model.FOOTNOTE_TAG
 import com.example.mobilereader.data.model.LINK_TAG
 import com.example.mobilereader.data.model.LinkedDocumentTarget
 import com.example.mobilereader.data.model.NoteDocument
+import com.example.mobilereader.data.model.Bookmark
 import com.example.mobilereader.data.model.ParagraphStyle
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.reader.selection.BookSelection
-import com.example.mobilereader.ui.reader.selection.BookAnchor
 import com.example.mobilereader.ui.reader.selection.ReaderHighlights
 import com.example.mobilereader.ui.reader.selection.SelectionAutoAdvance
 import com.example.mobilereader.ui.reader.selection.SelectionAutoAdvanceEffect
@@ -194,16 +191,11 @@ import com.example.mobilereader.ui.reader.selection.SelectionController
 import com.example.mobilereader.ui.reader.selection.SelectionHandles
 import com.example.mobilereader.ui.reader.selection.SelectionText
 import com.example.mobilereader.ui.reader.selection.bookSelectionGestures
-import com.example.mobilereader.ui.reader.selection.range
 import com.example.mobilereader.ui.reader.selection.readerHighlights
 import com.example.mobilereader.ui.reader.selection.rememberReaderHighlights
 import com.example.mobilereader.ui.reader.selection.rememberTextFragment
-import com.example.mobilereader.data.effectiveTheme
 import com.example.mobilereader.ui.theme.isDark
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
@@ -225,8 +217,7 @@ fun ReaderScreen(
 
 
     var chromeVisible by rememberSaveable { mutableStateOf(false) }
-    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
-    val readerTheme = appSettings.effectiveTheme(systemDark)
+    val readerTheme = appSettings.theme
     SystemBarsEffect(readerTheme, chromeVisible)
 
     when (val current = state) {
@@ -278,9 +269,13 @@ fun ReaderScreen(
 @Composable
 private fun ReaderLightPreview() = ReaderPagePreview(AppTheme.WHITE)
 
-@Preview(name = "Reader · sepia", showBackground = true, widthDp = 412, heightDp = 916)
+@Preview(name = "Reader · Warm", showBackground = true, widthDp = 412, heightDp = 916)
 @Composable
-private fun ReaderSepiaPreview() = ReaderPagePreview(AppTheme.SEPIA)
+private fun ReaderWarmPreview() = ReaderPagePreview(AppTheme.SEPIA)
+
+@Preview(name = "Reader · Dark", showBackground = true, widthDp = 412, heightDp = 916)
+@Composable
+private fun ReaderDarkPreview() = ReaderPagePreview(AppTheme.OLED)
 
 @Composable
 private fun ReaderPagePreview(theme: AppTheme) {
@@ -361,18 +356,13 @@ private fun ReaderContent(
     val liveBook by viewModel.book.collectAsStateWithLifecycle()
     val translationSettings by viewModel.translationSettings.collectAsStateWithLifecycle()
     val translationState by viewModel.translationState.collectAsStateWithLifecycle()
-    var translationSettingsVisible by remember { mutableStateOf(false) }
     var translationSelection by remember { mutableStateOf<BookSelection?>(null) }
 
 
     val panelFraction = remember { mutableFloatStateOf(0f) }
 
 
-    var liveFontSize by remember(settings.fontSizeSp) { mutableFloatStateOf(settings.fontSizeSp) }
-
-
     val displayedIndex = remember { mutableIntStateOf(viewModel.currentFlatIndex) }
-    var seekTarget by remember { mutableStateOf<Int?>(null) }
     var seekFraction by remember { mutableStateOf<Float?>(null) }
 
 
@@ -407,7 +397,6 @@ private fun ReaderContent(
 
 
     val livePagePosition = remember { mutableStateOf<Float?>(null) }
-    val liveScrollPosition = remember { mutableStateOf<Float?>(null) }
 
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -438,19 +427,14 @@ private fun ReaderContent(
         }
     }
 
-    val pinchHandlers = PinchHandlers(
-        onPinch = { zoom -> liveFontSize = (liveFontSize * zoom).coerceIn(12f, 32f) },
-        onPinchEnd = {
-            haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
-            val committed = liveFontSize.roundToInt().toFloat()
-            viewModel.updateSettings { it.copy(fontSizeSp = committed) }
-        },
-    )
-
-
     val activity = LocalActivity.current
     var brightness by remember { mutableStateOf<Float?>(null) }
     var brightnessVisibleUntil by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(settings.brightnessGestureEnabled) {
+        if (!settings.brightnessGestureEnabled) {
+            brightnessVisibleUntil = 0L
+        }
+    }
 
     val setBrightness: (Float?) -> Unit = { value ->
         activity?.window?.let { window ->
@@ -461,10 +445,11 @@ private fun ReaderContent(
             }
         }
     }
+    val currentBrightness = rememberUpdatedState(brightness)
     val brightnessHandlers = remember(activity) {
         BrightnessHandlers { delta ->
             val window = activity?.window ?: return@BrightnessHandlers
-            val current = brightness
+            val current = currentBrightness.value
                 ?: window.attributes.screenBrightness.takeIf { it >= 0f }
                 ?: 0.5f
 
@@ -497,17 +482,30 @@ private fun ReaderContent(
     }
 
 
-    val turnEvents = remember { MutableSharedFlow<Boolean>(extraBufferCapacity = 4) }
+    val turnController = remember(ready.book.id) {
+        VolumeTurnController(SystemClock::uptimeMillis)
+    }
     val mainActivity = activity as? MainActivity
-    DisposableEffect(mainActivity) {
-        val handler: (Boolean) -> Boolean = handler@{ forward ->
-            if (!viewModel.appSettings.value.volumeKeyPaging) return@handler false
-            if (searchVisible) return@handler false
-            if (linkedDocumentId != null) return@handler false
-            turnEvents.tryEmit(forward)
+    val currentSearchVisible by rememberUpdatedState(searchVisible)
+    val currentLinkedDocumentId by rememberUpdatedState(linkedDocumentId)
+    DisposableEffect(mainActivity, turnController) {
+        val handler: (Boolean, VolumeKeyPhase) -> Boolean = handler@{ forward, phase ->
+            when (phase) {
+                VolumeKeyPhase.PRESS -> {
+                    if (!viewModel.appSettings.value.volumeKeyPaging) return@handler false
+                    if (currentSearchVisible) return@handler false
+                    if (currentLinkedDocumentId != null) return@handler false
+                    turnController.press(forward)
+                }
+
+                VolumeKeyPhase.REPEAT -> turnController.repeat(forward)
+                VolumeKeyPhase.RELEASE -> turnController.release(forward)
+            }
+            true
         }
         mainActivity?.volumeKeyHandler = handler
         onDispose {
+            turnController.releaseAll()
             if (mainActivity?.volumeKeyHandler == handler) mainActivity.volumeKeyHandler = null
         }
     }
@@ -526,8 +524,6 @@ private fun ReaderContent(
     LaunchedEffect(ready) { selection.clear() }
 
 
-    LaunchedEffect(settings.readingMode) { selection.clear() }
-
     var noteToShow by remember { mutableStateOf<VisibleNote?>(null) }
     val navigationReturnLocation by viewModel.navigationReturnLocation.collectAsStateWithLifecycle()
     val returnTimeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
@@ -539,25 +535,17 @@ private fun ReaderContent(
     LaunchedEffect(returnTimeout) { viewModel.setReturnTimeoutMillis(returnTimeout) }
     val navigationBackAvailable = navigationReturnLocation != null
     val pagination by viewModel.pagination.collectAsStateWithLifecycle()
-    val returnPageNumber = if (settings.readingMode == ReadingMode.PAGES) {
-        val origin = navigationReturnLocation as? ReaderReturnLocation.Main
-        val pages = pagination?.takeIf { !it.partial }?.pages
-        if (origin != null && pages != null) {
+    val returnPageNumber = (navigationReturnLocation as? ReaderReturnLocation.Main)?.let { origin ->
+        pagination?.takeIf { holder -> !holder.partial }?.pages?.let { pages ->
             ReaderNavigationPolicy.pageIndexForLocation(pages, origin)?.plus(1)
-        } else null
-    } else null
+        }
+    }
     val currentReturnLabel = returnPageNumber?.let { stringResource(R.string.reader_return_page, it) }
         ?: stringResource(R.string.reader_return)
 
 
     var returnLabel by remember { mutableStateOf(currentReturnLabel) }
     if (navigationBackAvailable) returnLabel = currentReturnLabel
-    val readerDensity = LocalDensity.current
-    val readingTopReferencePx = with(readerDensity) {
-        (WindowInsets.systemBarsIgnoringVisibility.asPaddingValues()
-            .calculateTopPadding() + 20.dp).toPx()
-    }
-
     fun currentBookSurfaceLocation(): ReaderReturnLocation {
         val documentId = linkedDocumentId
         return if (documentId != null) {
@@ -567,24 +555,9 @@ private fun ReaderContent(
                 scrollOffset = linkedDocumentScrollOffset,
             )
         } else {
-            val logicalAnchor = if (settings.readingMode == ReadingMode.SCROLL) {
-                selection.spaceSize?.let { size ->
-                    selection.anchorAt(
-                        point = Offset(size.width / 2f, readingTopReferencePx),
-                        maxVerticalGap = with(readerDensity) { 96.dp.toPx() },
-                    )
-                }?.takeIf { it.itemIndex == viewModel.currentFlatIndex }
-            } else {
-                null
-            }
             ReaderReturnLocation.Main(
                 flatItemIndex = viewModel.currentFlatIndex,
-                charOffset = if (settings.readingMode == ReadingMode.PAGES) {
-                    viewModel.currentCharOffset
-                } else {
-                    logicalAnchor?.charOffset
-                },
-                scrollOffset = viewModel.currentScrollOffset,
+                charOffset = viewModel.currentCharOffset,
             )
         }
     }
@@ -608,6 +581,7 @@ private fun ReaderContent(
                 linkedDocumentItem = 0
                 linkedDocumentScrollOffset = 0
                 linkedDocumentSeek = null
+                seekFraction = null
                 seekPosition = surface
                 true
             }
@@ -682,8 +656,10 @@ private fun ReaderContent(
     }
 
 
-    val quoteRanges = remember(liveBook) {
-        liveBook?.quotes.orEmpty().mapNotNull { it.range() }
+    val quoteRanges = remember(ready, liveBook?.quotes) {
+        liveBook?.quotes.orEmpty().mapNotNull { quote ->
+            ready.quoteRange(quote)
+        }
     }
 
 
@@ -746,63 +722,30 @@ private fun ReaderContent(
 
                 .magnifier(sourceCenter = { selection.magnifierSource() }),
         ) {
-            when (settings.readingMode) {
-                ReadingMode.SCROLL -> ScrollReader(
-                    ready = ready,
-                    settings = settings,
-                    appSettings = appSettings,
-                    fontSize = liveFontSize,
-                    colors = colors,
-                    viewModel = viewModel,
-                    displayedIndex = displayedIndex,
-                    livePosition = liveScrollPosition,
-                    seekTarget = seekTarget,
-                    onSeekConsumed = { seekTarget = null },
-                    seekFraction = seekFraction,
-                    onSeekFractionConsumed = { seekFraction = null },
-                    seekPosition = seekPosition,
-                    onSeekPositionConsumed = { seekPosition = null },
-                    onToggleChrome = {
-                        onToggleChrome()
-                        searchHighlight = null
-                    },
-                    searchHighlight = searchHighlight,
-                    pinchHandlers = pinchHandlers,
-                    brightnessHandlers = brightnessHandlers,
-                    turnEvents = turnEvents,
-                    footnotes = footnotes,
-                    quoteRanges = quoteRanges,
-                    selection = selection,
-                )
-
-                ReadingMode.PAGES -> PagedReader(
-                    ready = ready,
-                    settings = settings,
-                    appSettings = appSettings,
-                    colors = colors,
-                    viewModel = viewModel,
-                    displayedIndex = displayedIndex,
-                    pagePosition = pagePosition,
-                    livePagePosition = livePagePosition,
-                    seekTarget = seekTarget,
-                    onSeekConsumed = { seekTarget = null },
-                    seekFraction = seekFraction,
-                    onSeekFractionConsumed = { seekFraction = null },
-                    seekPosition = seekPosition,
-                    onSeekPositionConsumed = { seekPosition = null },
-                    onToggleChrome = {
-                        onToggleChrome()
-                        searchHighlight = null
-                    },
-                    searchHighlight = searchHighlight,
-                    pinchHandlers = pinchHandlers,
-                    brightnessHandlers = brightnessHandlers,
-                    turnEvents = turnEvents,
-                    footnotes = footnotes,
-                    quoteRanges = quoteRanges,
-                    selection = selection,
-                )
-            }
+            PagedReader(
+                ready = ready,
+                settings = settings,
+                appSettings = appSettings,
+                colors = colors,
+                viewModel = viewModel,
+                displayedIndex = displayedIndex,
+                pagePosition = pagePosition,
+                livePagePosition = livePagePosition,
+                seekFraction = seekFraction,
+                onSeekFractionConsumed = { seekFraction = null },
+                seekPosition = seekPosition,
+                onSeekPositionConsumed = { seekPosition = null },
+                onToggleChrome = {
+                    onToggleChrome()
+                    searchHighlight = null
+                },
+                searchHighlight = searchHighlight,
+                brightnessHandlers = brightnessHandlers,
+                turnController = turnController,
+                footnotes = footnotes,
+                quoteRanges = quoteRanges,
+                selection = selection,
+            )
 
             SelectionAutoAdvanceEffect(selection)
             SelectionHandles(selection, colors.accent)
@@ -846,15 +789,18 @@ private fun ReaderContent(
             },
         )
 
-        BrightnessOverlay(
-            brightness = brightness,
-            visibleUntil = brightnessVisibleUntil,
-            colors = colors,
-            modifier = Modifier.align(Alignment.CenterStart),
-        )
+        if (settings.brightnessGestureEnabled) {
+            BrightnessOverlay(
+                brightness = brightness,
+                visibleUntil = brightnessVisibleUntil,
+                colors = colors,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+        }
 
-        val bookmarked = liveBook?.bookmarks?.any {
-            it.flatIndex in displayedIndex.intValue..(displayedIndex.intValue + viewModel.bookmarkWindow)
+        val bookmarked = liveBook?.bookmarks?.any { bookmark ->
+            ready.bookmarkAnchor(bookmark)?.itemIndex in
+                displayedIndex.intValue..(displayedIndex.intValue + viewModel.bookmarkWindow)
         } == true
 
         val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
@@ -918,51 +864,40 @@ private fun ReaderContent(
 
         val currentChapter = ready.chapterAt(displayedIndex.intValue)
 
-        val pageInfo = pagePosition.value
-        val livePage = livePagePosition.value
+        val pageInfo = ReaderNavigationPolicy.completePagePosition(pagePosition.value, fullPages)
+        val livePage = livePagePosition.value.takeIf { pageInfo != null }
         val fraction = pageInfo?.let { (page, total) ->
             if (total <= 1) 1f else (livePage ?: page.toFloat()) / (total - 1)
-        } ?: if (ready.items.size <= 1) {
-            0f
-        } else {
-            (liveScrollPosition.value ?: displayedIndex.intValue.toFloat()) /
-                (ready.items.size - 1)
-        }
+        } ?: (seekFraction ?: 0f)
 
 
-        val chapterStartPages = remember(pagination, ready) {
-            val pages = pagination?.takeIf { !it.partial }?.pages
-            if (pages.isNullOrEmpty()) {
+        val chapterStartPages = remember(fullPages, ready) {
+            if (fullPages.isNullOrEmpty()) {
                 null
             } else {
                 ready.chapterStarts.map { start ->
-                    pages.indexOfLast { it.firstItemIndex <= start }.coerceAtLeast(0)
+                    fullPages.indexOfLast { page -> page.firstItemIndex <= start }.coerceAtLeast(0)
                 }
             }
         }
-        val usePages = pageInfo != null && chapterStartPages != null
-        val bookSegments = remember(ready, chapterStartPages, usePages) {
-            if (usePages) {
-                val total = ((pagination?.pages?.size ?: 1) - 1).coerceAtLeast(1)
-                chapterStartPages.map { it.toFloat() / total }
+        val pagesReady = pageInfo != null && chapterStartPages != null
+        val bookSegments = remember(chapterStartPages, pageInfo) {
+            if (chapterStartPages == null || pageInfo == null) {
+                emptyList()
             } else {
-                val total = (ready.items.size - 1).coerceAtLeast(1)
-                ready.chapterStarts.map { it.toFloat() / total }
+                val lastPage = (pageInfo.second - 1).coerceAtLeast(1)
+                chapterStartPages.map { startPage -> startPage.toFloat() / lastPage }
             }
         }
 
-        val chapterStart = ready.chapterStarts[currentChapter]
-        val chapterEnd = ready.chapterStarts.getOrNull(currentChapter + 1) ?: ready.items.size
-        val chapterFraction = if (usePages) {
+        val chapterFraction = if (pagesReady) {
             val page = livePage ?: pageInfo.first.toFloat()
             val startPage = chapterStartPages[currentChapter]
             val endPage = chapterStartPages.getOrNull(currentChapter + 1)?.minus(1)
                 ?: (pageInfo.second - 1)
             if (endPage <= startPage) 1f else (page - startPage) / (endPage - startPage)
         } else {
-            val span = chapterEnd - 1 - chapterStart
-            val position = liveScrollPosition.value ?: displayedIndex.intValue.toFloat()
-            if (span <= 0) 1f else ((position - chapterStart) / span).coerceIn(0f, 1f)
+            0f
         }
 
         fun commitProgressSeek(changed: Boolean, seek: () -> Unit): Boolean {
@@ -987,7 +922,7 @@ private fun ReaderContent(
             panelFraction = panelFraction,
             chapterStartPages = chapterStartPages,
             totalPages = pageInfo?.second,
-            progressValuesReady = settings.readingMode == ReadingMode.SCROLL || usePages,
+            progressValuesReady = pagesReady,
             ready = ready,
             book = liveBook,
             currentChapter = currentChapter,
@@ -997,7 +932,7 @@ private fun ReaderContent(
             bookFraction = fraction.coerceIn(0f, 1f),
             bookSegments = bookSegments,
             onSeekChapter = { f ->
-                if (usePages) {
+                if (pagesReady) {
                     val startPage = chapterStartPages[currentChapter]
                     val endPage = chapterStartPages.getOrNull(currentChapter + 1)?.minus(1)
                         ?: (pageInfo.second - 1)
@@ -1012,28 +947,14 @@ private fun ReaderContent(
                             (pageInfo.second - 1).coerceAtLeast(1)
                     }
                 } else {
-                    val targetItem = ReaderNavigationPolicy.progressTargetIndex(
-                        fraction = f,
-                        firstIndex = chapterStart,
-                        lastIndexInclusive = chapterEnd - 1,
-                    )
-                    commitProgressSeek(targetItem != displayedIndex.intValue) {
-                        seekTarget = targetItem
-                    }
+                    false
                 }
             },
             onSeekBook = { f ->
                 val info = pageInfo
-                if (pagination?.partial == true) {
-
-
-                    val stableCurrentFraction = if (ready.items.size > 1) {
-                        displayedIndex.intValue.toFloat() / (ready.items.size - 1)
-                    } else {
-                        0f
-                    }
+                if (info == null) {
                     val pending = ReaderNavigationPolicy.pendingBookFractionSeek(
-                        currentFraction = stableCurrentFraction,
+                        currentFraction = seekFraction ?: Float.NaN,
                         requestedFraction = f,
                     )
                     if (pending == null) {
@@ -1041,7 +962,7 @@ private fun ReaderContent(
                     } else {
                         commitProgressSeek(changed = true) { seekFraction = pending }
                     }
-                } else if (info != null) {
+                } else {
                     val targetPage = ReaderNavigationPolicy.progressTargetIndex(
                         fraction = f,
                         firstIndex = 0,
@@ -1052,15 +973,6 @@ private fun ReaderContent(
                         seekFraction = targetPage.toFloat() /
                             (info.second - 1).coerceAtLeast(1)
                     }
-                } else {
-                    val targetItem = ReaderNavigationPolicy.progressTargetIndex(
-                        fraction = f,
-                        firstIndex = 0,
-                        lastIndexInclusive = ready.items.size - 1,
-                    )
-                    commitProgressSeek(targetItem != displayedIndex.intValue) {
-                        seekFraction = f
-                    }
                 }
             },
             settings = settings,
@@ -1069,7 +981,8 @@ private fun ReaderContent(
             onUpdate = { transform -> viewModel.updateSettings(transform) },
             onUpdateApp = { transform -> viewModel.updateAppSettings(transform) },
             onBrightnessChange = setBrightness,
-            onTranslationSettings = { translationSettingsVisible = true },
+            translationSettings = translationSettings,
+            onSaveTranslationSettings = { updated -> viewModel.updateTranslationSettings { updated } },
             onChapterClick = { target ->
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                 when (target) {
@@ -1087,9 +1000,12 @@ private fun ReaderContent(
                     }
                 }
             },
-            onBookmarkClick = { flatIndex ->
+            onBookmarkClick = { bookmark ->
+                val anchor = ready.bookmarkAnchor(bookmark) ?: return@ReaderBottomBar
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                navigateWithHistory(ReaderReturnLocation.Main(flatIndex))
+                navigateWithHistory(
+                    ReaderReturnLocation.Main(anchor.itemIndex, charOffset = anchor.charOffset),
+                )
             },
             onRemoveBookmark = { viewModel.removeBookmark(it) },
             onCopyQuote = { text ->
@@ -1097,11 +1013,13 @@ private fun ReaderContent(
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
             },
             onQuoteClick = { quote ->
+                val range = ready.quoteRange(quote) ?: return@ReaderBottomBar
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-
-
                 navigateWithHistory(
-                    ReaderReturnLocation.Main(quote.startItem, charOffset = quote.startChar),
+                    ReaderReturnLocation.Main(
+                        range.start.itemIndex,
+                        charOffset = range.start.charOffset,
+                    ),
                 )
             },
             onRemoveQuote = { viewModel.removeQuote(it) },
@@ -1116,7 +1034,7 @@ private fun ReaderContent(
         )
     }
 
-    if (settings.readingMode == ReadingMode.PAGES && pagination == null) {
+    if (pagination == null) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1138,7 +1056,7 @@ private fun ReaderContent(
                     onSeekConsumed = { linkedDocumentSeek = null },
                     settings = settings,
                     appSettings = appSettings,
-                    fontSize = liveFontSize,
+                    fontSize = settings.fontSizeSp,
                     colors = colors,
                     bookFonts = ready.bookFonts,
                     language = ready.language,
@@ -1177,7 +1095,7 @@ private fun ReaderContent(
             initialScrollOffset = note.scrollOffset,
             settings = settings,
             appSettings = appSettings,
-            fontSize = liveFontSize,
+            fontSize = settings.fontSizeSp,
             colors = colors,
             bookFonts = ready.bookFonts,
             language = ready.language,
@@ -1196,14 +1114,6 @@ private fun ReaderContent(
                 }
             },
             onDismiss = { noteToShow = null },
-        )
-    }
-
-    if (translationSettingsVisible) {
-        ContextualTranslationSettingsSheet(
-            settings = translationSettings,
-            onSave = { updated -> viewModel.updateTranslationSettings { updated } },
-            onDismiss = { translationSettingsVisible = false },
         )
     }
 
@@ -1347,11 +1257,6 @@ private fun NoteSheet(
 
 
         key(noteKey) {
-            val notePlan = remember(note) {
-                planPublisherChapter(note.elements, note.publisherBoxes)
-            }
-
-
             val initialIndex = noteInitialLazyIndex(initialItem, note.elements.size)
             val listState = rememberLazyListState(
                 initialFirstVisibleItemIndex = initialIndex,
@@ -1390,10 +1295,6 @@ private fun NoteSheet(
                         )
                     }
                     items(note.elements.size, key = { it }) { index ->
-                        if (index in notePlan.suppressedElements && settings.bookStyles) {
-                            return@items
-                        }
-                        val plannedFloat = notePlan.floatByTarget[index]
                         RenderPart(
                             element = note.elements[index],
                             textOverride = null,
@@ -1407,20 +1308,6 @@ private fun NoteSheet(
                             bookFonts = bookFonts,
                             language = language,
                             footnotes = footnotes,
-                            publisherBoxes = notePlan.boxesByElement[index],
-                            publisherFloat = plannedFloat?.let { float ->
-                                ReaderPublisherFloat(
-                                    side = float.side,
-                                    style = float.style,
-                                    contents = float.contents.map { content ->
-                                        ReaderPublisherFloatContent(
-                                            sourceItemIndex = content.sourceElementIndex,
-                                            element = content.element,
-                                            publisherBoxes = content.publisherBoxes,
-                                        )
-                                    },
-                                )
-                            },
                         )
                     }
                 }
@@ -1463,7 +1350,7 @@ private fun LinkedDocumentOverlay(
     val initialIndex = if (document.items.isEmpty()) {
         0
     } else {
-        resolvePublisherFloatTarget(document.items, initialItem)
+        initialItem.coerceIn(0, document.items.lastIndex)
     }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex = initialIndex,
@@ -1473,7 +1360,7 @@ private fun LinkedDocumentOverlay(
         val target = seek
         if (target != null && target.documentId == document.id && document.items.isNotEmpty()) {
             listState.scrollToItem(
-                resolvePublisherFloatTarget(document.items, target.itemIndex),
+                target.itemIndex.coerceIn(0, document.items.lastIndex),
                 target.scrollOffset.coerceAtLeast(0),
             )
             onSeekConsumed()
@@ -1503,9 +1390,6 @@ private fun LinkedDocumentOverlay(
         ) {
             items(document.items.size, key = { it }) { index ->
                 val readerItem = document.items[index]
-                if (readerItem.suppressedByPublisherFloat && settings.bookStyles) {
-                    return@items
-                }
                 RenderPart(
                     element = readerItem.element,
                     textOverride = null,
@@ -1519,8 +1403,6 @@ private fun LinkedDocumentOverlay(
                     bookFonts = bookFonts,
                     language = language,
                     footnotes = footnotes,
-                    publisherBoxes = readerItem.publisherBoxes,
-                    publisherFloat = readerItem.publisherFloat,
                 )
             }
         }
@@ -1670,298 +1552,6 @@ internal fun AnnotatedString.withSearchHighlight(
 }
 
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ScrollReader(
-    ready: ReaderState.Ready,
-    settings: ReaderSettings,
-    appSettings: AppSettings,
-    fontSize: Float,
-    colors: ReaderColors,
-    viewModel: ReaderViewModel,
-    displayedIndex: MutableIntState,
-    livePosition: androidx.compose.runtime.MutableState<Float?>,
-    seekTarget: Int?,
-    onSeekConsumed: () -> Unit,
-    seekFraction: Float?,
-    onSeekFractionConsumed: () -> Unit,
-    seekPosition: ReaderReturnLocation.Main?,
-    onSeekPositionConsumed: () -> Unit,
-    onToggleChrome: () -> Unit,
-    pinchHandlers: PinchHandlers,
-    brightnessHandlers: BrightnessHandlers,
-    turnEvents: SharedFlow<Boolean>,
-    footnotes: FootnoteHandler?,
-    quoteRanges: List<BookSelection>,
-    searchHighlight: String?,
-    selection: SelectionController,
-) {
-    val scope = rememberCoroutineScope()
-    val liveBook by viewModel.book.collectAsStateWithLifecycle()
-    val rawInitialIndex = viewModel.currentFlatIndex.coerceIn(0, ready.items.size - 1)
-    val initialIndex = resolvePublisherFloatTarget(ready.items, rawInitialIndex)
-    val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = initialIndex,
-        initialFirstVisibleItemScrollOffset = if (initialIndex == rawInitialIndex &&
-            rawInitialIndex == ready.book.progress.elementIndex
-        ) {
-            ready.book.progress.scrollOffset
-        } else {
-            0
-        },
-    )
-    val density = LocalDensity.current
-    val stableInsets = WindowInsets.systemBarsIgnoringVisibility.asPaddingValues()
-    val readingTopReferencePx = with(density) {
-        (stableInsets.calculateTopPadding() + 20.dp).toPx()
-    }
-    fun currentScrollLocation(): ReaderReturnLocation.Main {
-        val index = listState.firstVisibleItemIndex.coerceIn(ready.items.indices)
-        val anchor = selection.spaceSize?.let { size ->
-            selection.anchorAt(
-                point = Offset(size.width / 2f, readingTopReferencePx),
-                maxVerticalGap = with(density) { 96.dp.toPx() },
-            )
-        }?.takeIf { it.itemIndex == index }
-        return ReaderReturnLocation.Main(
-            flatItemIndex = index,
-            charOffset = anchor?.charOffset,
-            scrollOffset = listState.firstVisibleItemScrollOffset,
-        )
-    }
-
-    LaunchedEffect(ready) {
-        snapshotFlow {
-            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-        }.collect { (index, offset) ->
-                displayedIndex.intValue = index.coerceAtMost(ready.items.size - 1)
-                viewModel.observeVisiblePosition(index, offset)
-                if (index >= ready.items.size - 1) viewModel.markFinished()
-            }
-    }
-
-
-    LaunchedEffect(ready, listState) {
-        var origin: ReaderReturnLocation.Main? = null
-        var previousOffsets = emptyMap<Int, Int>()
-        var travelledPx = 0f
-        var viewportPx = 1
-        snapshotFlow {
-            Triple(
-                listState.isScrollInProgress,
-                listState.layoutInfo.visibleItemsInfo.map { it.index to it.offset },
-                listState.layoutInfo.viewportSize.height.coerceAtLeast(1),
-            )
-        }.collect { (moving, visible, viewport) ->
-            val currentOffsets = visible.toMap()
-            viewportPx = viewport
-            if (moving && origin == null) {
-                origin = currentScrollLocation()
-                travelledPx = 0f
-            }
-            if (moving) {
-                val common = previousOffsets.keys.firstOrNull { it in currentOffsets }
-                if (common != null) {
-                    travelledPx += abs(
-                        previousOffsets.getValue(common) - currentOffsets.getValue(common),
-                    )
-                }
-            } else {
-                val start = origin
-                if (start != null && !selection.active &&
-                    ReaderNavigationPolicy.isLargeScrollJump(travelledPx, viewportPx)
-                ) {
-                    val end = currentScrollLocation()
-                    if (end != start) viewModel.rememberNavigationOrigin(start, expires = true)
-                }
-                origin = null
-                travelledPx = 0f
-            }
-            previousOffsets = currentOffsets
-        }
-    }
-
-
-    LaunchedEffect(ready) {
-        snapshotFlow {
-            val info = listState.layoutInfo.visibleItemsInfo.firstOrNull()
-            if (info == null || info.size <= 0) {
-                null
-            } else {
-                info.index + ((-info.offset).toFloat() / info.size).coerceIn(0f, 1f)
-            }
-        }.collect { position -> position?.let { livePosition.value = it } }
-    }
-    LaunchedEffect(ready) {
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collectLatest { (index, offset) ->
-                delay(400.milliseconds)
-                viewModel.saveProgress(index, offset)
-            }
-    }
-    LaunchedEffect(seekTarget) {
-        val target = seekTarget ?: return@LaunchedEffect
-        val sourceItem = target.coerceIn(0, ready.items.size - 1)
-        val visibleItem = resolvePublisherFloatTarget(ready.items, sourceItem)
-        livePosition.value = sourceItem.toFloat()
-        listState.scrollToItem(visibleItem)
-        onSeekConsumed()
-    }
-    LaunchedEffect(seekFraction) {
-        val fraction = seekFraction ?: return@LaunchedEffect
-        val item = (fraction * (ready.items.size - 1)).roundToInt()
-            .coerceIn(0, ready.items.size - 1)
-        livePosition.value = item.toFloat()
-        listState.scrollToItem(resolvePublisherFloatTarget(ready.items, item))
-        onSeekFractionConsumed()
-    }
-    LaunchedEffect(seekPosition) {
-        val position = seekPosition ?: return@LaunchedEffect
-        val sourceTarget = position.flatItemIndex.coerceIn(0, ready.items.size - 1)
-        val visibleTarget = resolvePublisherFloatTarget(ready.items, sourceTarget)
-        livePosition.value = sourceTarget.toFloat()
-        val charOffset = position.charOffset
-        if (charOffset == null) {
-            listState.scrollToItem(visibleTarget, position.scrollOffset.coerceAtLeast(0))
-        } else {
-
-
-            listState.scrollToItem(visibleTarget)
-            var restored = false
-            repeat(3) {
-                withFrameNanos { }
-                val caret = selection.caretAt(BookAnchor(sourceTarget, charOffset))
-                if (caret != null) {
-                    val correction = caret.top - readingTopReferencePx
-                    if (abs(correction) > 0.5f) listState.scrollBy(correction)
-                    restored = true
-                }
-            }
-            if (!restored) {
-                listState.scrollToItem(
-                    visibleTarget,
-                    position.scrollOffset.coerceAtLeast(0),
-                )
-            }
-        }
-        onSeekPositionConsumed()
-    }
-    LaunchedEffect(ready) {
-        turnEvents.collect { forward ->
-            val viewport = listState.layoutInfo.viewportSize.height * 0.88f
-            listState.animateScrollBy(if (forward) viewport else -viewport)
-        }
-    }
-    DisposableEffect(ready) {
-        onDispose {
-            viewModel.saveProgress(
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-            )
-        }
-    }
-
-    val highlights = rememberReaderHighlights(
-        controller = selection,
-        quotes = quoteRanges,
-        quoteColor = colors.quoteHighlight,
-        selectionColor = colors.selection,
-    )
-
-    DisposableEffect(selection, listState) {
-        val mine = SelectionAutoAdvance(
-            paged = false,
-            step = { _, pixels -> listState.scrollBy(pixels) },
-        )
-        selection.advance = mine
-        selection.surfaceMoving = { listState.isScrollInProgress }
-
-
-        onDispose {
-            if (selection.advance === mine) {
-                selection.advance = null
-                selection.surfaceMoving = { false }
-            }
-        }
-    }
-
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val contentWidth = maxWidth - ReaderMetrics.horizontalPadding(settings.pageMargins) * 2
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .readerGestures(
-                    onTapLeft = {
-                        scope.launch {
-                            val delta = ReaderProgression.horizontalTapDelta(
-                                leftEdge = true,
-                                progression = ready.pageProgression,
-                            )
-                            listState.animateScrollBy(
-                                delta * listState.layoutInfo.viewportSize.height * 0.88f,
-                            )
-                        }
-                    },
-                    onTapRight = {
-                        scope.launch {
-                            val delta = ReaderProgression.horizontalTapDelta(
-                                leftEdge = false,
-                                progression = ready.pageProgression,
-                            )
-                            listState.animateScrollBy(
-                                delta * listState.layoutInfo.viewportSize.height * 0.88f,
-                            )
-                        }
-                    },
-                    onTapCenter = onToggleChrome,
-                    pinchHandlers = pinchHandlers,
-                    brightnessHandlers = brightnessHandlers,
-                ),
-            contentPadding = PaddingValues(
-                top = stableInsets.calculateTopPadding() + 20.dp,
-                bottom = stableInsets.calculateBottomPadding() + 48.dp,
-            ),
-        ) {
-            items(ready.items.size, key = { it }) { index ->
-                val readerItem = ready.items[index]
-                if (readerItem.suppressedByPublisherFloat && settings.bookStyles) {
-                    return@items
-                }
-                RenderPart(
-                    element = readerItem.element,
-                    textOverride = null,
-                    isParagraphStart = true,
-                    imageHeightPx = null,
-                    settings = settings,
-                    appSettings = appSettings,
-                    fontSize = fontSize,
-                    colors = colors,
-                    contentWidth = contentWidth,
-                    bookFonts = ready.bookFonts,
-                    language = ready.language,
-                    footnotes = footnotes,
-                    searchHighlight = searchHighlight,
-                    highlights = highlights,
-                    itemIndex = index,
-                    publisherBoxes = readerItem.publisherBoxes,
-                    publisherFloat = readerItem.publisherFloat,
-                )
-            }
-            item(key = "completion") {
-                CompletionPage(
-                    book = liveBook,
-                    colors = colors,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 48.dp, bottom = 24.dp),
-                )
-            }
-        }
-    }
-}
-
-
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PagedReader(
@@ -1973,16 +1563,13 @@ private fun PagedReader(
     displayedIndex: MutableIntState,
     pagePosition: androidx.compose.runtime.MutableState<Pair<Int, Int>?>,
     livePagePosition: androidx.compose.runtime.MutableState<Float?>,
-    seekTarget: Int?,
-    onSeekConsumed: () -> Unit,
     seekFraction: Float?,
     onSeekFractionConsumed: () -> Unit,
     seekPosition: ReaderReturnLocation.Main?,
     onSeekPositionConsumed: () -> Unit,
     onToggleChrome: () -> Unit,
-    pinchHandlers: PinchHandlers,
     brightnessHandlers: BrightnessHandlers,
-    turnEvents: SharedFlow<Boolean>,
+    turnController: VolumeTurnController,
     footnotes: FootnoteHandler?,
     quoteRanges: List<BookSelection>,
     searchHighlight: String?,
@@ -2090,6 +1677,21 @@ private fun PagedReader(
             val pagerState = rememberPagerState(initialPage = initialPage) {
                 realPageCount + extraPages
             }
+            val pageTurnAnimationEnabled = rememberUpdatedState(settings.pageTurnAnimationEnabled)
+
+            suspend fun turnPage(targetPage: Int) {
+                if (pageTurnAnimationEnabled.value) {
+                    pagerState.animateScrollToPage(targetPage)
+                } else {
+                    pagerState.scrollToPage(targetPage)
+                }
+            }
+
+            LaunchedEffect(settings.pageTurnAnimationEnabled, pagerState) {
+                if (!settings.pageTurnAnimationEnabled && pagerState.isScrollInProgress) {
+                    pagerState.scrollToPage(pagerState.targetPage)
+                }
+            }
 
 
             val chapterLastPage = remember(current) {
@@ -2125,13 +1727,13 @@ private fun PagedReader(
 
                         val flat = pages[settled].firstItemIndex
                         displayedIndex.intValue = flat
-                        viewModel.saveProgress(flat, 0, pages[settled].firstCharOffset)
+                        viewModel.saveProgress(flat, pages[settled].firstCharOffset)
                         return@collect
                     }
                     val flatIndex = pages[settled].firstItemIndex
                     displayedIndex.intValue = flatIndex
                     pagePosition.value = settled to realPageCount
-                    viewModel.saveProgress(flatIndex, 0, pages[settled].firstCharOffset)
+                    viewModel.saveProgress(flatIndex, pages[settled].firstCharOffset)
                 }
             }
 
@@ -2170,13 +1772,6 @@ private fun PagedReader(
                     lastTargetPage = target
                 }
             }
-            LaunchedEffect(seekTarget) {
-                val target = seekTarget ?: return@LaunchedEffect
-                val page = pages.indexOfLast { it.firstItemIndex <= target }.coerceAtLeast(0)
-                livePagePosition.value = page.toFloat()
-                pagerState.scrollToPage(page)
-                onSeekConsumed()
-            }
             LaunchedEffect(seekFraction, current.partial) {
                 val fraction = seekFraction ?: return@LaunchedEffect
                 if (!ReaderNavigationPolicy.canConsumeBookFractionSeek(current.partial)) {
@@ -2210,10 +1805,10 @@ private fun PagedReader(
                 pagerState.scrollToPage(page)
                 onSeekPositionConsumed()
             }
-            LaunchedEffect(pagerState) {
-                turnEvents.collect { forward ->
+            LaunchedEffect(pagerState, turnController) {
+                turnController.collectTurns { forward ->
                     val delta = if (forward) 1 else -1
-                    pagerState.animateScrollToPage(
+                    turnPage(
                         (pagerState.currentPage + delta)
                             .coerceIn(0, realPageCount + extraPages - 1),
                     )
@@ -2223,18 +1818,17 @@ private fun PagedReader(
 
             DisposableEffect(selection, pagerState, realPageCount) {
                 val mine = SelectionAutoAdvance(
-                    paged = true,
-                    step = { direction, _ ->
+                    step = { direction ->
                         val logicalDirection = ReaderProgression.selectionPageDelta(
                             direction,
                             ready.pageProgression,
                         )
-                        pagerState.animateScrollToPage(
+                        turnPage(
                             (pagerState.currentPage + logicalDirection)
                                 .coerceIn(0, (realPageCount - 1).coerceAtLeast(0)),
                         )
                     },
-                    settle = { pagerState.animateScrollToPage(pagerState.currentPage) },
+                    settle = { turnPage(pagerState.currentPage) },
                 )
                 selection.advance = mine
                 selection.surfaceMoving = { pagerState.isScrollInProgress }
@@ -2249,6 +1843,11 @@ private fun PagedReader(
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 1,
+                flingBehavior = if (settings.pageTurnAnimationEnabled) {
+                    PagerDefaults.flingBehavior(state = pagerState)
+                } else {
+                    PagerDefaults.flingBehavior(state = pagerState, snapAnimationSpec = snap())
+                },
                 reverseLayout = ReaderProgression.usesReversePagerLayout(
                     ready.pageProgression,
                     uiLayoutIsRtl = uiLayoutIsRtl,
@@ -2262,7 +1861,7 @@ private fun PagedReader(
                                     leftEdge = true,
                                     progression = ready.pageProgression,
                                 )
-                                pagerState.animateScrollToPage(
+                                turnPage(
                                     (pagerState.currentPage + delta)
                                         .coerceIn(0, realPageCount + extraPages - 1),
                                 )
@@ -2274,14 +1873,15 @@ private fun PagedReader(
                                     leftEdge = false,
                                     progression = ready.pageProgression,
                                 )
-                                pagerState.animateScrollToPage(
+                                turnPage(
                                     (pagerState.currentPage + delta)
                                         .coerceIn(0, realPageCount + extraPages - 1),
                                 )
                             }
                         },
                         onTapCenter = onToggleChrome,
-                        pinchHandlers = pinchHandlers,
+                        edgeTapPagingEnabled = settings.edgeTapPagingEnabled,
+                        brightnessGestureEnabled = settings.brightnessGestureEnabled,
                         brightnessHandlers = brightnessHandlers,
                     ),
             ) { pageIndex ->
@@ -2388,6 +1988,7 @@ private fun PageView(
                 textOverride = part.text,
                 isParagraphStart = part.isParagraphStart,
                 imageHeightPx = part.imageHeightPx,
+                imageWidthPx = part.imageWidthPx,
                 settings = settings,
                 appSettings = appSettings,
                 fontSize = settings.fontSizeSp,
@@ -2401,106 +2002,130 @@ private fun PageView(
                 tableRowStart = part.rowStart,
                 tableRowEnd = part.rowEnd,
                 tableHeaderRepeated = part.headerRepeated,
-                sideBox = part.sideBox,
-                floatImagePath = part.floatImagePath,
                 highlights = highlights,
                 itemIndex = part.itemIndex,
 
 
                 charStart = if (part.text != null) part.charStart.coerceAtLeast(0) else 0,
-                publisherBoxes = part.publisherBoxes,
-                publisherStartsElement = part.publisherStartsElement,
-                publisherEndsElement = part.publisherEndsElement,
             )
         }
     }
 }
 
 
-class PinchHandlers(
-    val onPinch: (Float) -> Unit,
-    val onPinchEnd: () -> Unit,
-)
-
 class BrightnessHandlers(
-
     val onDelta: (Float) -> Unit,
 )
 
-
+@Composable
 private fun Modifier.readerGestures(
     onTapLeft: () -> Unit,
     onTapRight: () -> Unit,
     onTapCenter: () -> Unit,
-    pinchHandlers: PinchHandlers,
+    edgeTapPagingEnabled: Boolean,
+    brightnessGestureEnabled: Boolean,
     brightnessHandlers: BrightnessHandlers,
-): Modifier = this
-    .pointerInput(Unit) {
-        detectTapGestures { offset ->
-            val width = size.width.toFloat()
-            when {
-                offset.x < width * 0.22f -> onTapLeft()
-                offset.x > width * 0.78f -> onTapRight()
-                else -> onTapCenter()
-            }
-        }
-    }
-    .pointerInput(pinchHandlers) {
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false)
-            var zoomed = false
-            while (true) {
-                val event = awaitPointerEvent()
-                if (event.changes.count { it.pressed } >= 2) {
-                    val zoom = event.calculateZoom()
-                    if (zoom != 1f) {
-                        pinchHandlers.onPinch(zoom)
-                        zoomed = true
-                        event.changes.forEach { it.consume() }
-                    }
-                }
-                if (event.changes.none { it.pressed }) break
-            }
-            if (zoomed) pinchHandlers.onPinchEnd()
-        }
-    }
-    .pointerInput(brightnessHandlers) {
+): Modifier {
+    val currentOnTapLeft = rememberUpdatedState(onTapLeft)
+    val currentOnTapRight = rememberUpdatedState(onTapRight)
+    val currentOnTapCenter = rememberUpdatedState(onTapCenter)
 
+    val tapModifier = Modifier.pointerInput(edgeTapPagingEnabled) {
         awaitEachGesture {
             val down = awaitFirstDown(
                 requireUnconsumed = false,
-                pass = PointerEventPass.Initial,
+                pass = PointerEventPass.Final,
             )
-            if (down.position.x > size.width * 0.12f) return@awaitEachGesture
-
-            val slop = viewConfiguration.touchSlop
-            var dragging = false
+            val tap = ReaderTapGesture(
+                startX = down.position.x,
+                startY = down.position.y,
+                touchSlop = viewConfiguration.touchSlop,
+            )
+            tap.observe(1, down.position.x, down.position.y, down.isConsumed)
+            var releasedX = down.position.x
             while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) break
-                if (event.changes.count { it.pressed } > 1) break
-
-
-                if (change.isConsumed) break
-
-                val totalDx = change.position.x - down.position.x
-                val totalDy = change.position.y - down.position.y
-                if (!dragging) {
-                    if (abs(totalDy) > slop && abs(totalDy) > abs(totalDx) * 1.5f) {
-                        dragging = true
-                    } else if (abs(totalDx) > slop) {
-                        break
-                    }
+                val event = awaitPointerEvent(PointerEventPass.Final)
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null) {
+                    tap.cancel()
+                } else {
+                    releasedX = change.position.x
+                    tap.observe(
+                        pointerCount = event.changes.size,
+                        x = change.position.x,
+                        y = change.position.y,
+                        consumed = change.isConsumed,
+                    )
                 }
-                if (dragging) {
-                    val dy = change.position.y - change.previousPosition.y
-                    brightnessHandlers.onDelta(-dy / (size.height * 0.7f))
-                    change.consume()
+                if (event.changes.none { it.pressed }) {
+                    break
+                }
+            }
+            if (tap.canTap) {
+                when (readerTapTarget(releasedX, size.width.toFloat(), edgeTapPagingEnabled)) {
+                    ReaderTapTarget.LEFT -> currentOnTapLeft.value()
+                    ReaderTapTarget.RIGHT -> currentOnTapRight.value()
+                    ReaderTapTarget.CENTER -> currentOnTapCenter.value()
+                    ReaderTapTarget.NONE -> Unit
                 }
             }
         }
     }
+
+    val brightnessModifier = if (brightnessGestureEnabled) {
+        Modifier.pointerInput(brightnessHandlers) {
+            awaitEachGesture {
+                val down = awaitFirstDown(
+                    requireUnconsumed = false,
+                    pass = PointerEventPass.Initial,
+                )
+                if (!canStartBrightnessGesture(
+                        down.position.x,
+                        size.width.toFloat(),
+                        brightnessGestureEnabled,
+                    )
+                ) {
+                    return@awaitEachGesture
+                }
+
+                val slop = viewConfiguration.touchSlop
+                var dragging = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        break
+                    }
+                    if (event.changes.size > 1) {
+                        break
+                    }
+                    if (change.isConsumed) {
+                        break
+                    }
+
+                    val totalDx = change.position.x - down.position.x
+                    val totalDy = change.position.y - down.position.y
+                    if (!dragging) {
+                        if (abs(totalDy) > slop && abs(totalDy) > abs(totalDx) * 1.5f) {
+                            dragging = true
+                        } else if (abs(totalDx) > slop) {
+                            break
+                        }
+                    }
+                    if (dragging) {
+                        val dy = change.position.y - change.previousPosition.y
+                        brightnessHandlers.onDelta(-dy / (size.height * 0.7f))
+                        change.consume()
+                    }
+                }
+            }
+        }
+    } else {
+        Modifier
+    }
+
+    return this.then(tapModifier).then(brightnessModifier)
+}
 
 
 @Composable
@@ -2556,6 +2181,7 @@ private fun RenderPart(
     textOverride: androidx.compose.ui.text.AnnotatedString?,
     isParagraphStart: Boolean,
     imageHeightPx: Int?,
+    imageWidthPx: Int? = null,
     settings: ReaderSettings,
     appSettings: AppSettings,
     fontSize: Float,
@@ -2565,538 +2191,221 @@ private fun RenderPart(
     language: String? = null,
     footnotes: FootnoteHandler? = null,
     searchHighlight: String? = null,
-
     highlights: ReaderHighlights? = null,
-
     itemIndex: Int = -1,
-
     charStart: Int = 0,
     tableLayout: TableLayout? = null,
     tableRowStart: Int = -1,
     tableRowEnd: Int = -1,
     tableHeaderRepeated: Boolean = false,
-    sideBox: SideBoxSpec? = null,
-    floatImagePath: String? = null,
-    publisherBoxes: List<ReaderPublisherBox> = emptyList(),
-    publisherFloat: ReaderPublisherFloat? = null,
-    publisherStartsElement: Boolean = true,
-    publisherEndsElement: Boolean = true,
 ) {
-    val (vTop, vBottom) = ReaderMetrics.verticalPaddings(
-        element,
-        fontSize,
-        settings.bookStyles,
-    )
+    val (topPadding, bottomPadding) = ReaderMetrics.verticalPaddings(element, fontSize)
     val density = LocalDensity.current
-    val columnWidthPx = with(density) { contentWidth.roundToPx() }
-    val fontSizePx = with(density) { fontSize.sp.toPx() }
-    val boxGeometry = remember(
-        publisherBoxes,
-        columnWidthPx,
-        fontSizePx,
-        publisherStartsElement,
-        publisherEndsElement,
-        settings.bookStyles,
-    ) {
-        publisherBoxGeometry(
-            boxes = publisherBoxes,
-            columnWidthPx = columnWidthPx,
-            fontSizePx = fontSizePx,
-            partStartsElement = publisherStartsElement,
-            partEndsElement = publisherEndsElement,
-            enabled = settings.bookStyles,
-        )
+    val contentWidthPx = with(density) { contentWidth.roundToPx() }
+    val (startInset, endInset) = ReaderMetrics.horizontalInsets(element, contentWidth, fontSize)
+    val (leftInset, _) = ReaderMetrics.physicalHorizontalInsets(element, contentWidth, fontSize)
+    val horizontalPadding = ReaderMetrics.horizontalPadding(settings.pageMargins)
+    val leftPadding = horizontalPadding + leftInset
+    val textWidthPx = with(density) {
+        (contentWidthPx - startInset.roundToPx() - endInset.roundToPx()).coerceAtLeast(1)
     }
-    val boxContentWidth = with(density) { boxGeometry.contentWidthPx.toDp() }
-    val (startInset, endInset) =
-        ReaderMetrics.horizontalInsets(element, boxContentWidth, fontSize)
-    val (leftInset, _) =
-        ReaderMetrics.physicalHorizontalInsets(element, boxContentWidth, fontSize)
-    val basePadding = ReaderMetrics.horizontalPadding(settings.pageMargins)
-    val publisherLeftInset = with(density) { boxGeometry.contentLeftPx.toDp() }
-    val publisherTopInset = with(density) { boxGeometry.topInsetPx.toDp() }
-    val publisherBottomInset = with(density) { boxGeometry.bottomInsetPx.toDp() }
-    val leftPadding = basePadding + publisherLeftInset + leftInset
-    val effectiveVTop = vTop + publisherTopInset
-    val effectiveVBottom = vBottom + publisherBottomInset
-    val publisherOwnsBackground = settings.bookStyles &&
-        hasPublisherBoxBackground(publisherBoxes)
-    val surroundingBackground = if (settings.bookStyles) {
-        publisherBoxEffectiveBackground(publisherBoxes, colors.background)
-    } else {
-        colors.background
-    }
-
-    val actuallyInvert = appSettings.autoInvertImages && appSettings.theme == AppTheme.OLED
-
-
-    val exactTextWidth = with(density) {
-        (boxGeometry.contentWidthPx - startInset.roundToPx() - endInset.roundToPx())
-            .coerceAtLeast(1)
-            .toDp()
-    }
-
+    val textWidth = with(density) { textWidthPx.toDp() }
+    val invertImages = appSettings.autoInvertImages && appSettings.theme == AppTheme.OLED
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        val columnLeftPx = with(density) { basePadding.toPx() }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .drawPublisherBoxes(boxGeometry, columnLeftPx, fontSizePx),
-        ) {
+        Box(Modifier.fillMaxWidth()) {
             when (element) {
-        is ContentElement.Paragraph -> {
-
-
-            if (floatImagePath != null) {
-                val heightModifier = if (imageHeightPx != null) {
-                    with(LocalDensity.current) { Modifier.height(imageHeightPx.toDp()) }
-                } else {
-                    Modifier.heightIn(max = ReaderMetrics.maxImageHeight)
-                }
-                AsyncImage(
-                    model = File(floatImagePath),
-                    contentDescription = element.block?.floatImage?.altText,
-                    contentScale = ContentScale.Fit,
-                    colorFilter = imageColorFilter(actuallyInvert),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = basePadding, vertical = 12.dp)
-                        .then(heightModifier),
-                )
-                return@Box
-            }
-
-            val defaultTextColor = when (element.style) {
-                ParagraphStyle.QUOTE -> colors.secondaryText
-                else -> colors.text
-            }
-            val colorPair = publisherColorPair(
-                element.block,
-                settings.bookStyles,
-                defaultTextColor,
-                surroundingBackground,
-                backgroundAlreadyApplied = publisherOwnsBackground,
-            )
-            val linkColor = readableReaderForeground(colors.accent, colorPair.effectiveBackground)
-            fun decorated(raw: androidx.compose.ui.text.AnnotatedString) =
-                raw.withPublisherColors(settings.bookStyles, colorPair)
-                    .withFootnoteLinks(linkColor, footnotes)
-                    .withSearchHighlight(searchHighlight, colors.accent.copy(alpha = 0.3f))
-
-
-            if (sideBox != null && textOverride != null) {
-                val besideDisplay = remember(
-                    textOverride, settings.bookStyles, colorPair,
-                    colors, footnotes, searchHighlight,
-                ) { decorated(textOverride) }
-                SideBoxComposite(
-                    element = element,
-                    sideBox = sideBox,
-                    besideText = besideDisplay,
-                    settings = settings,
-                    fontSize = fontSize,
-                    bookFonts = bookFonts,
-                    language = language,
-                    colors = colors,
-                    surroundingBackground = surroundingBackground,
-                    publisherBackgroundAlreadyApplied = publisherOwnsBackground,
-                    totalWidthPx = with(LocalDensity.current) { exactTextWidth.roundToPx() },
-                    invertImages = actuallyInvert,
-                    highlights = highlights,
-                    itemIndex = itemIndex,
-                    footnotes = footnotes,
-                    searchHighlight = searchHighlight,
-                    modifier = Modifier.absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    ).then(
-                        colorPair.background
-                            ?.takeUnless { publisherOwnsBackground }
-                            ?.let { Modifier.background(it) }
-                            ?: Modifier,
-                    ),
-                )
-                return@Box
-            }
-
-
-            val isScrollMode = textOverride == null
-            if (isScrollMode) {
-                val scrollMeasurer = rememberTextMeasurer(cacheSize = 0)
-                val density = LocalDensity.current
-                val widthPx = with(density) { exactTextWidth.roundToPx() }
-                val plan = remember(
-                    element,
-                    publisherFloat,
-                    widthPx,
-                    density.density,
-                    density.fontScale,
-                    settings,
-                    fontSize,
-                    language,
-                    bookFonts,
-                ) {
-                    planSideBox(
-                        element, scrollMeasurer, density, settings, fontSize,
-                        bookFonts, language, widthPx,
-                        publisherFloat = publisherFloat,
+                is ContentElement.Paragraph, is ContentElement.Heading -> {
+                    val rawText = if (element is ContentElement.Paragraph) {
+                        textOverride ?: element.text
+                    } else {
+                        textOverride ?: (element as ContentElement.Heading).styledText
+                    }
+                    val defaultColor = if (element is ContentElement.Paragraph &&
+                        element.style == ParagraphStyle.QUOTE
+                    ) {
+                        colors.secondaryText
+                    } else {
+                        colors.text
+                    }
+                    val decoratedText = remember(
+                        rawText,
+                        colors.accent,
+                        footnotes,
+                        searchHighlight,
+                    ) {
+                        rawText.withoutPublisherColors()
+                            .withFootnoteLinks(colors.accent, footnotes)
+                            .withSearchHighlight(
+                                searchHighlight,
+                                colors.accent.copy(alpha = 0.3f),
+                            )
+                    }
+                    val bidiText = remember(decoratedText) { BidiLayoutText.of(decoratedText) }
+                    val fragment = rememberTextFragment(
+                        highlights,
+                        itemIndex,
+                        charStart,
+                        rawText.length,
+                        bidiText,
                     )
-                }
-                val floatBlock = element.block?.floatImage
-                    ?.takeIf { !settings.bookStyles }
-                if (plan != null || floatBlock != null) {
-                    Column(
-                        Modifier
+                    val textStyle = ReaderMetrics.textStyle(
+                        element,
+                        settings,
+                        fontSize,
+                        isParagraphStart,
+                        bookFonts,
+                        language,
+                    ).copy(color = defaultColor)
+                    Text(
+                        text = bidiText.display,
+                        style = textStyle,
+                        onTextLayout = { fragment?.layout = it },
+                        modifier = Modifier
                             .absolutePadding(
                                 left = leftPadding,
-                                top = effectiveVTop,
-                                bottom = effectiveVBottom,
+                                top = topPadding,
+                                bottom = bottomPadding,
                             )
-                            .width(exactTextWidth)
-                            .then(
-                                colorPair.background
-                                    ?.takeUnless { publisherOwnsBackground }
-                                    ?.let { Modifier.background(it) }
-                                    ?: Modifier,
-                            ),
-                    ) {
-                        if (floatBlock != null) {
-                            AsyncImage(
-                                model = File(floatBlock.path),
-                                contentDescription = floatBlock.altText,
-                                contentScale = ContentScale.Fit,
-                                colorFilter = imageColorFilter(actuallyInvert),
-                                modifier = Modifier
-                                    .width(exactTextWidth)
-                                    .heightIn(max = ReaderMetrics.maxImageHeight)
-                                    .padding(bottom = 12.dp),
-                            )
-                        }
-                        if (plan != null) {
-                            val capLen = plan.capText?.length ?: 0
-                            val beside = remember(
-                                element, plan, settings.bookStyles, colorPair,
-                                colors, footnotes, searchHighlight,
-                            ) {
-                                decorated(element.text.subSequence(capLen, plan.besideEndChar))
-                            }
-                            SideBoxComposite(
-                                element = element,
-                                sideBox = plan,
-                                besideText = beside,
-                                settings = settings,
-                                fontSize = fontSize,
-                                bookFonts = bookFonts,
-                                language = language,
-                                colors = colors,
-                                surroundingBackground = surroundingBackground,
-                                publisherBackgroundAlreadyApplied = publisherOwnsBackground,
-                                totalWidthPx = widthPx,
-                                invertImages = actuallyInvert,
-                                highlights = highlights,
-                                itemIndex = itemIndex,
-                                footnotes = footnotes,
-                                searchHighlight = searchHighlight,
-                            )
-                            if (plan.besideEndChar < element.text.length) {
-                                val remainder = remember(
-                                    element, plan, settings.bookStyles, colorPair,
-                                    colors, footnotes, searchHighlight,
-                                ) {
-                                    decorated(
-                                        element.text.subSequence(
-                                            plan.besideEndChar, element.text.length,
-                                        ),
-                                    )
-                                }
-                                val remainderBidi = remember(remainder) {
-                                    BidiLayoutText.of(remainder)
-                                }
-                                val tail = rememberTextFragment(
-                                    highlights, itemIndex,
-                                    charStart = plan.besideEndChar,
-                                    length = element.text.length - plan.besideEndChar,
-                                    bidi = remainderBidi,
-                                )
-                                Text(
-                                    text = remainderBidi.display,
-                                    style = ReaderMetrics
-                                        .textStyle(
-                                            element, settings, fontSize,
-                                            isParagraphStart = false,
-                                            bookFonts = bookFonts,
-                                            language = language,
-                                        )
-                                        .copy(color = colorPair.foreground),
-                                    onTextLayout = { tail?.layout = it },
-                                    modifier = Modifier
-                                        .width(exactTextWidth)
-                                        .readerHighlights(tail, highlights),
-                                    inlineContent = inlineImageContent(
-                                        remainderBidi.display,
-                                        actuallyInvert,
-                                    ),
-                                )
-                            }
-                        } else {
-                            val whole = remember(
-                                element, settings.bookStyles, colorPair,
-                                colors, footnotes, searchHighlight,
-                            ) {
-                                decorated(element.text)
-                            }
-                            val wholeBidi = remember(whole) { BidiLayoutText.of(whole) }
-                            val fragment = rememberTextFragment(
-                                highlights, itemIndex, charStart = 0, length = element.text.length,
-                                bidi = wholeBidi,
-                            )
-                            Text(
-                                text = wholeBidi.display,
-                                style = ReaderMetrics
-                                    .textStyle(
-                                        element, settings, fontSize,
-                                        isParagraphStart, bookFonts, language,
-                                    )
-                                    .copy(color = colorPair.foreground),
-                                onTextLayout = { fragment?.layout = it },
-                                modifier = Modifier
-                                    .width(exactTextWidth)
-                                    .readerHighlights(fragment, highlights),
-                                inlineContent = inlineImageContent(
-                                    wholeBidi.display,
-                                    actuallyInvert,
-                                ),
-                            )
-                        }
-                    }
-                    return@Box
+                            .width(textWidth)
+                            .readerHighlights(fragment, highlights),
+                        inlineContent = inlineImageContent(
+                            text = bidiText.display,
+                            availableWidthPx = textWidthPx,
+                            fontSizePx = with(density) { textStyle.fontSize.toPx() },
+                            invert = invertImages,
+                        ),
+                    )
                 }
-            }
 
-            val raw = textOverride ?: element.text
-            val decoratedDisplay = remember(
-                raw, settings.bookStyles, colorPair, colors, footnotes, searchHighlight,
-            ) {
-                decorated(raw)
-            }
-            val bidiDisplay = remember(decoratedDisplay) {
-                BidiLayoutText.of(decoratedDisplay)
-            }
-            val display = bidiDisplay.display
-            val fragment = rememberTextFragment(
-                highlights, itemIndex, charStart, raw.length, bidiDisplay,
-            )
-            Text(
-                text = display,
-                style = ReaderMetrics
-                    .textStyle(element, settings, fontSize, isParagraphStart, bookFonts, language)
-                    .copy(color = colorPair.foreground),
-                onTextLayout = { fragment?.layout = it },
-                modifier = Modifier
-                    .absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    )
-                    .width(exactTextWidth)
-                    .then(
-                        colorPair.background
-                            ?.takeUnless { publisherOwnsBackground }
-                            ?.let { Modifier.background(it) }
-                            ?: Modifier,
-                    )
-                    .readerHighlights(fragment, highlights),
-                inlineContent = inlineImageContent(display, actuallyInvert),
-            )
-        }
+                is ContentElement.Image -> {
+                    val maximumHeightPx = with(density) {
+                        ReaderMetrics.maxImageHeight.roundToPx()
+                    }
+                    val imageSize = if (imageWidthPx != null && imageHeightPx != null) {
+                        FlowImageSize(imageWidthPx, imageHeightPx)
+                    } else {
+                        flowImageSizePx(
+                            element = element,
+                            contentWidthPx = contentWidthPx,
+                            fontSizePx = with(density) { fontSize.sp.toPx() },
+                            maxHeightPx = maximumHeightPx,
+                        )
+                    }
+                    Box(
+                        contentAlignment = Alignment.TopCenter,
+                        modifier = Modifier
+                            .absolutePadding(
+                                left = horizontalPadding,
+                                top = topPadding,
+                                bottom = bottomPadding,
+                            )
+                            .width(contentWidth),
+                    ) {
+                        AsyncImage(
+                            model = File(element.path),
+                            contentDescription = element.altText,
+                            contentScale = if (element.heightEm != null &&
+                                (element.widthFrac != null || element.widthEm != null)
+                            ) ContentScale.FillBounds else ContentScale.Fit,
+                            colorFilter = imageColorFilter(invertImages),
+                            modifier = Modifier
+                                .width(with(density) { imageSize.widthPx.toDp() })
+                                .height(with(density) { imageSize.heightPx.toDp() }),
+                        )
+                    }
+                }
 
-        is ContentElement.Heading -> {
-            val raw = textOverride ?: element.styledText
-            val colorPair = publisherColorPair(
-                element.block,
-                settings.bookStyles,
-                colors.text,
-                surroundingBackground,
-                backgroundAlreadyApplied = publisherOwnsBackground,
-            )
-            val linkColor = readableReaderForeground(colors.accent, colorPair.effectiveBackground)
-            val decoratedDisplay = remember(
-                raw, settings.bookStyles, colorPair, linkColor, footnotes, searchHighlight, colors.accent,
-            ) {
-                raw.withPublisherColors(settings.bookStyles, colorPair)
-                    .withFootnoteLinks(linkColor, footnotes)
-                    .withSearchHighlight(searchHighlight, colors.accent.copy(alpha = 0.3f))
-            }
-            val bidiDisplay = remember(decoratedDisplay) {
-                BidiLayoutText.of(decoratedDisplay)
-            }
-            val display = bidiDisplay.display
-            val fragment = rememberTextFragment(
-                highlights, itemIndex, charStart, raw.length, bidiDisplay,
-            )
-            Text(
-                text = display,
-                style = ReaderMetrics
-                    .textStyle(element, settings, fontSize, isParagraphStart, bookFonts, language)
-                    .copy(color = colorPair.foreground),
-                onTextLayout = { fragment?.layout = it },
-                modifier = Modifier
-                    .absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    )
-                    .width(exactTextWidth)
-                    .then(
-                        colorPair.background
-                            ?.takeUnless { publisherOwnsBackground }
-                            ?.let { Modifier.background(it) }
-                            ?: Modifier,
-                    )
-                    .readerHighlights(fragment, highlights),
-                inlineContent = inlineImageContent(display, actuallyInvert),
-            )
-        }
-
-        is ContentElement.Image -> {
-            val availableImageWidthPx = with(density) { exactTextWidth.roundToPx() }
-            val publisherOwnsImageWidth = publisherBoxesOwnImageWidth(
-                publisherBoxes,
-                settings.bookStyles,
-            )
-            val displayImageWidthPx = imageWidthPx(
-                element = element,
-                contentWidthPx = availableImageWidthPx,
-                fontSizePx = fontSizePx,
-                publisherOwnsWidth = publisherOwnsImageWidth,
-            )
-            val displayImageHeightPx = imageHeightPx ?:
-                com.example.mobilereader.ui.reader.imageHeightPx(
-                element = element,
-                contentWidthPx = availableImageWidthPx,
-                fontSizePx = fontSizePx,
-                maxHeightPx = with(density) { ReaderMetrics.maxImageHeight.roundToPx() },
-                publisherOwnsWidth = publisherOwnsImageWidth,
-                )
-
-
-            Box(
-                contentAlignment = Alignment.TopCenter,
-                modifier = Modifier
-                    .absolutePadding(
-                        left = leftPadding,
-                        top = effectiveVTop,
-                        bottom = effectiveVBottom,
-                    )
-                    .width(exactTextWidth),
-            ) {
-
-
-                AsyncImage(
-                    model = File(element.path),
-                    contentDescription = element.altText,
-                    contentScale = ContentScale.Fit,
-                    colorFilter = imageColorFilter(actuallyInvert),
+                ContentElement.Divider -> Box(
                     modifier = Modifier
-                        .width(with(density) { displayImageWidthPx.toDp() })
-                        .height(with(density) { displayImageHeightPx.coerceAtLeast(1).toDp() }),
+                        .fillMaxWidth()
+                        .padding(top = topPadding, bottom = bottomPadding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HorizontalDivider(
+                        color = colors.secondaryText.copy(alpha = 0.4f),
+                        modifier = Modifier.width(96.dp),
+                    )
+                }
+
+                is ContentElement.Spacer -> Spacer(
+                    Modifier.height(
+                        ReaderMetrics.spacerHeight(element, fontSize) +
+                            topPadding + bottomPadding,
+                    ),
                 )
-            }
-        }
 
-        ContentElement.Divider -> Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = effectiveVTop, bottom = effectiveVBottom),
-            contentAlignment = Alignment.Center,
-        ) {
-            HorizontalDivider(
-                color = colors.secondaryText.copy(alpha = 0.4f),
-                modifier = Modifier.width(96.dp),
-            )
-        }
-
-        is ContentElement.Spacer -> Spacer(
-            Modifier.height(
-                ReaderMetrics.spacerHeight(element, fontSize) +
-                    effectiveVTop + effectiveVBottom,
-            ),
-        )
-
-        is ContentElement.Table -> {
-
-
-            val scrollMeasurer = rememberTextMeasurer(cacheSize = 0)
-            val density = LocalDensity.current
-            val widthPx = boxGeometry.contentWidthPx
-            val layout = tableLayout ?: remember(
-                element,
-                widthPx,
-                density.density,
-                density.fontScale,
-                settings,
-                fontSize,
-                language,
-                bookFonts,
-            ) {
-                measureTableLayout(
-                    element, scrollMeasurer, density, settings,
-                    fontSize, widthPx, language, bookFonts,
-                )
-            }
-            TableBlock(
-                table = element,
-                layout = layout,
-                rowStart = if (tableRowStart >= 0) tableRowStart else 0,
-                rowEnd = if (tableRowEnd >= 0) tableRowEnd else element.rows.size,
-                headerRepeated = tableHeaderRepeated,
-                settings = settings,
-                fontSize = fontSize,
-                language = language,
-                bookFonts = bookFonts,
-                invertImages = actuallyInvert,
-                footnotes = footnotes,
-                searchHighlight = searchHighlight,
-                colors = colors,
-                surroundingBackground = surroundingBackground,
-                publisherBackgroundAlreadyApplied = publisherOwnsBackground,
-                highlights = highlights,
-                itemIndex = itemIndex,
-                modifier = Modifier.absolutePadding(
-                    left = basePadding + publisherLeftInset,
-                    top = effectiveVTop,
-                    bottom = effectiveVBottom,
-                ).then(
-                    publisherColorPair(
-                        element.block,
-                        settings.bookStyles,
-                        colors.text,
-                        surroundingBackground,
-                        backgroundAlreadyApplied = publisherOwnsBackground,
-                    ).background
-                        ?.takeUnless { publisherOwnsBackground }
-                        ?.let { Modifier.background(it) }
-                        ?: Modifier,
-                ),
-            )
+                is ContentElement.Table -> {
+                    val tableMeasurer = rememberTextMeasurer(cacheSize = 0)
+                    val layout = tableLayout ?: remember(
+                        element,
+                        contentWidthPx,
+                        density.density,
+                        density.fontScale,
+                        settings,
+                        fontSize,
+                        language,
+                        bookFonts,
+                    ) {
+                        measureTableLayout(
+                            element,
+                            tableMeasurer,
+                            density,
+                            settings,
+                            fontSize,
+                            contentWidthPx,
+                            language,
+                            bookFonts,
+                        )
+                    }
+                    TableBlock(
+                        table = element,
+                        layout = layout,
+                        rowStart = if (tableRowStart >= 0) tableRowStart else 0,
+                        rowEnd = if (tableRowEnd >= 0) tableRowEnd else element.rows.size,
+                        headerRepeated = tableHeaderRepeated,
+                        settings = settings,
+                        fontSize = fontSize,
+                        language = language,
+                        bookFonts = bookFonts,
+                        invertImages = invertImages,
+                        footnotes = footnotes,
+                        searchHighlight = searchHighlight,
+                        colors = colors,
+                        highlights = highlights,
+                        itemIndex = itemIndex,
+                        modifier = Modifier.absolutePadding(
+                            left = horizontalPadding,
+                            top = topPadding,
+                            bottom = bottomPadding,
+                        ),
+                    )
+                }
             }
         }
     }
 }
-}
-
 
 @Composable
 private fun SystemBarsEffect(theme: AppTheme, chromeVisible: Boolean) {
     val activity = LocalActivity.current
     val currentTheme by rememberUpdatedState(theme)
+    val chromeScheme = MaterialTheme.colorScheme
+    val colors = remember(theme, chromeScheme) {
+        readerColors(theme, chromeScheme)
+    }
 
-    LaunchedEffect(theme, chromeVisible) {
+    LaunchedEffect(theme, chromeVisible, colors) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         controller.isAppearanceLightStatusBars = !theme.isDark()
+        controller.isAppearanceLightNavigationBars = !theme.isDark()
+        window.statusBarColor = if (chromeVisible) {
+            colors.chrome.toArgb()
+        } else {
+            colors.background.toArgb()
+        }
+        window.navigationBarColor = colors.background.toArgb()
 
 
         controller.systemBarsBehavior =
@@ -3117,6 +2426,7 @@ private fun SystemBarsEffect(theme: AppTheme, chromeVisible: Boolean) {
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
             controller.show(WindowInsetsCompat.Type.systemBars())
             controller.isAppearanceLightStatusBars = !currentTheme.isDark()
+            controller.isAppearanceLightNavigationBars = !currentTheme.isDark()
         }
     }
 }
@@ -3359,9 +2669,10 @@ private fun ReaderBottomBar(
     onUpdate: ((ReaderSettings) -> ReaderSettings) -> Unit,
     onUpdateApp: ((AppSettings) -> AppSettings) -> Unit,
     onBrightnessChange: (Float?) -> Unit,
-    onTranslationSettings: () -> Unit,
+    translationSettings: TranslationSettings,
+    onSaveTranslationSettings: (TranslationSettings) -> Unit,
     onChapterClick: (ReaderNavigationTarget) -> Unit,
-    onBookmarkClick: (Int) -> Unit,
+    onBookmarkClick: (Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
     onCopyQuote: (String) -> Unit,
     onQuoteClick: (Quote) -> Unit,
@@ -3378,9 +2689,7 @@ private fun ReaderBottomBar(
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
 
-    var halfPx by remember {
-        mutableFloatStateOf(with(density) { (screenHeight * 0.48f).toPx() })
-    }
+    val halfPx = with(density) { (screenHeight * 0.48f).toPx() }
     val windowHeightPx = LocalWindowInfo.current.containerSize.height.toFloat()
     val statusTopPx = with(density) {
         WindowInsets.systemBarsIgnoringVisibility.asPaddingValues().calculateTopPadding().toPx()
@@ -3397,6 +2706,7 @@ private fun ReaderBottomBar(
     val panelHeight = panelMotion.height
     val panelOpen = panelMotion.isOpen
     var panelContent by remember { mutableStateOf(BarPanel.SETTINGS) }
+    var selectedSettingsCategoryIndex by rememberSaveable { mutableIntStateOf(0) }
 
     fun settlePanel(targetPx: Float) = panelMotion.animateTo(targetPx)
 
@@ -3431,35 +2741,6 @@ private fun ReaderBottomBar(
         },
         onDragStopped = { velocity -> settleWithVelocity(velocity) },
     )
-
-
-    val panelNestedScroll = remember(halfPx, fullPx) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                val dy = available.y
-                if (dy > 0f && panelHeight.value > 0f) {
-                    val target = (panelHeight.value - dy).coerceAtLeast(0f)
-                    val used = panelHeight.value - target
-                    panelMotion.snapTo(target)
-                    return Offset(0f, used)
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                val anchors = listOf(0f, halfPx, fullPx)
-                if (anchors.none { abs(it - panelHeight.value) < 1f }) {
-                    settleWithVelocity(available.y)
-                    return available
-                }
-                return Velocity.Zero
-            }
-        }
-    }
 
 
     fun togglePanel(content: BarPanel) {
@@ -3558,36 +2839,21 @@ private fun ReaderBottomBar(
 
                     val panelDp = with(density) { panelHeight.value.toDp() }
                     if (panelDp > 0.dp) {
-                        Box(
-                            Modifier
-                                .height(panelDp)
-                                .nestedScroll(panelNestedScroll),
-                        ) {
+                        Box(Modifier.height(panelDp)) {
                             when (panelContent) {
-                                BarPanel.SETTINGS -> Column(
-                                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                                ) {
-                                    ReaderSettingsControls(
-                                        settings = settings,
-                                        appSettings = appSettings,
-                                        colors = colors,
-                                        publisherStyle = ready.publisherStyle,
-                                        brightness = brightness,
-                                        onUpdate = onUpdate,
-                                        onUpdateApp = onUpdateApp,
-                                        onBrightnessChange = onBrightnessChange,
-                                        onTranslationSettings = onTranslationSettings,
-                                        onPeekHeight = { measured ->
-                                            val target = measured +
-                                                with(density) { 10.dp.toPx() }
-                                            if (abs(target - halfPx) > 2f) {
-                                                val previous = halfPx
-                                                halfPx = target
-                                                panelMotion.updatePeek(previous, target)
-                                            }
-                                        },
-                                    )
-                                }
+                                BarPanel.SETTINGS -> ReaderSettingsControls(
+                                    selectedCategoryIndex = selectedSettingsCategoryIndex,
+                                    onCategorySelected = { selectedSettingsCategoryIndex = it },
+                                    settings = settings,
+                                    appSettings = appSettings,
+                                    colors = colors,
+                                    brightness = brightness,
+                                    onUpdate = onUpdate,
+                                    onUpdateApp = onUpdateApp,
+                                    onBrightnessChange = onBrightnessChange,
+                                    translationSettings = translationSettings,
+                                    onSaveTranslationSettings = onSaveTranslationSettings,
+                                )
 
                                 BarPanel.CONTENTS -> ReaderPanelsContent(
                                     colorScheme = appColorSchemeFor(appSettings.theme, appSettings.dynamicColor),
@@ -3600,9 +2866,9 @@ private fun ReaderBottomBar(
                                         settlePanel(0f)
                                         onChapterClick(index)
                                     },
-                                    onBookmarkClick = { flatIndex ->
+                                    onBookmarkClick = { bookmark ->
                                         settlePanel(0f)
-                                        onBookmarkClick(flatIndex)
+                                        onBookmarkClick(bookmark)
                                     },
                                     onRemoveBookmark = onRemoveBookmark,
                                     onCopyQuote = onCopyQuote,

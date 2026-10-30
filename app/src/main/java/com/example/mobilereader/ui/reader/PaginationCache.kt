@@ -5,6 +5,8 @@ import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.EXTERNAL_LINK_TAG
 import com.example.mobilereader.data.model.FOOTNOTE_TAG
 import com.example.mobilereader.data.model.INLINE_IMAGE_ALT_TAG
+import com.example.mobilereader.data.model.INLINE_IMAGE_ID_TAG
+import com.example.mobilereader.data.model.INLINE_IMAGE_SIZE_TAG
 import com.example.mobilereader.data.model.INLINE_IMAGE_TAG
 import com.example.mobilereader.data.model.LINK_TAG
 import kotlinx.serialization.Serializable
@@ -17,7 +19,7 @@ import java.security.MessageDigest
 object PaginationCache {
 
 
-    private const val FORMAT_VERSION = 6
+    private const val FORMAT_VERSION = 10
 
     @Serializable
     private class CachedPart(
@@ -26,6 +28,7 @@ object PaginationCache {
         val end: Int = -1,
         val paraStart: Boolean = true,
         val imageH: Int? = null,
+        val imageW: Int? = null,
 
         val rowS: Int = -1,
         val rowE: Int = -1,
@@ -34,22 +37,6 @@ object PaginationCache {
         val tScale: Float = 1f,
         val hdr: Boolean = false,
 
-        val sbCap: String? = null,
-        val sbImg: String? = null,
-        val sbLeft: Boolean = true,
-        val sbW: Int = 0,
-        val sbH: Int = 0,
-        val sbBesideW: Int = 0,
-        val sbEnd: Int = 0,
-        val sbCompH: Int = 0,
-        val sbCapSp: Float = 0f,
-        val sbCapTop: Int = 0,
-        val sbFloatHeights: List<Int>? = null,
-        val sbStacked: Boolean = false,
-
-        val fImg: String? = null,
-        val pbStart: Boolean = true,
-        val pbEnd: Boolean = true,
         val vScroll: Boolean = false,
     )
 
@@ -79,20 +66,6 @@ object PaginationCache {
         hash.int(items.size)
         for (item in items) {
             hash.int(item.chapterIndex)
-            hash.boolean(item.suppressedByPublisherFloat)
-            hash.string(item.publisherClearBefore.name)
-            hash.int(item.publisherBoxes.size)
-            item.publisherBoxes.forEach { hash.string(it.toString()) }
-            item.publisherFloat?.let { float ->
-                hash.string(float.side.name)
-                hash.string(float.style.toString())
-                hash.int(float.contents.size)
-                float.contents.forEach { content ->
-                    hash.int(content.sourceItemIndex)
-                    hash.int(content.publisherBoxes.size)
-                    content.publisherBoxes.forEach { hash.string(it.toString()) }
-                }
-            } ?: hash.int(-1)
             when (val element = item.element) {
                 is ContentElement.Paragraph -> {
                     hash.string("paragraph")
@@ -111,12 +84,10 @@ object PaginationCache {
                 is ContentElement.Image -> {
                     hash.string("image")
                     hash.file(element.path)
+                    hash.string(element.altText)
                     hash.float(element.widthFrac)
                     hash.float(element.widthEm)
                     hash.float(element.heightEm)
-                    hash.string(element.altText)
-                    hash.boolean(element.spaceBeforeSpecified)
-                    hash.boolean(element.spaceAfterSpecified)
                 }
 
                 ContentElement.Divider -> hash.string("divider")
@@ -137,12 +108,8 @@ object PaginationCache {
                             hash.annotated(cell.text)
                             hash.int(cell.colSpan)
                             hash.int(cell.rowSpan)
-                            hash.string(cell.align?.name)
                             hash.boolean(cell.header)
                             hash.block(cell.block)
-                            hash.string(cell.publisherBox?.toString())
-                            hash.boolean(cell.publisherPaddingSpecified)
-                            hash.boolean(cell.publisherBorderSpecified)
                         }
                     }
                 }
@@ -187,9 +154,6 @@ object PaginationCache {
                                 headerRepeated = part.hdr,
                                 charStart = part.rowS,
                                 charEnd = part.rowE,
-                                publisherBoxes = items[part.item].publisherBoxes,
-                                publisherStartsElement = part.pbStart,
-                                publisherEndsElement = part.pbEnd,
                                 allowsVerticalScroll = part.vScroll,
                             )
                         }
@@ -204,38 +168,15 @@ object PaginationCache {
                         } else {
                             null
                         }
-                        val sideBox = if (part.sbBesideW > 0) {
-                            SideBoxSpec(
-                                capText = part.sbCap,
-                                imagePath = part.sbImg,
-                                leftSide = part.sbLeft,
-                                boxWidthPx = part.sbW,
-                                boxHeightPx = part.sbH,
-                                besideWidthPx = part.sbBesideW,
-                                besideEndChar = part.sbEnd,
-                                compositeHeightPx = part.sbCompH,
-                                capFontSizeSp = part.sbCapSp,
-                                capTopPx = part.sbCapTop,
-                                publisherFloat = items[part.item].publisherFloat,
-                                publisherFloatItemHeightsPx = part.sbFloatHeights.orEmpty(),
-                                publisherStacked = part.sbStacked,
-                            )
-                        } else {
-                            null
-                        }
                         PagePart(
                             itemIndex = part.item,
                             element = element,
                             text = text,
                             isParagraphStart = part.paraStart,
                             imageHeightPx = part.imageH,
+                            imageWidthPx = part.imageW,
                             charStart = part.start,
                             charEnd = part.end,
-                            sideBox = sideBox,
-                            floatImagePath = part.fImg,
-                            publisherBoxes = items[part.item].publisherBoxes,
-                            publisherStartsElement = part.pbStart,
-                            publisherEndsElement = part.pbEnd,
                             allowsVerticalScroll = part.vScroll,
                         )
                     },
@@ -264,29 +205,13 @@ object PaginationCache {
                                 end = if (part.text != null) part.charEnd else -1,
                                 paraStart = part.isParagraphStart,
                                 imageH = part.imageHeightPx,
+                                imageW = part.imageWidthPx,
                                 rowS = part.rowStart,
                                 rowE = part.rowEnd,
                                 cols = part.tableLayout?.colWidthsPx?.toList(),
                                 rowH = part.tableLayout?.rowHeightsPx?.toList(),
                                 tScale = part.tableLayout?.fontScale ?: 1f,
                                 hdr = part.headerRepeated,
-                                sbCap = part.sideBox?.capText,
-                                sbImg = part.sideBox?.imagePath,
-                                sbLeft = part.sideBox?.leftSide ?: true,
-                                sbW = part.sideBox?.boxWidthPx ?: 0,
-                                sbH = part.sideBox?.boxHeightPx ?: 0,
-                                sbBesideW = part.sideBox?.besideWidthPx ?: 0,
-                                sbEnd = part.sideBox?.besideEndChar ?: 0,
-                                sbCompH = part.sideBox?.compositeHeightPx ?: 0,
-                                sbCapSp = part.sideBox?.capFontSizeSp ?: 0f,
-                                sbCapTop = part.sideBox?.capTopPx ?: 0,
-                                sbFloatHeights = part.sideBox
-                                    ?.publisherFloatItemHeightsPx
-                                    ?.takeIf(List<Int>::isNotEmpty),
-                                sbStacked = part.sideBox?.publisherStacked == true,
-                                fImg = part.floatImagePath,
-                                pbStart = part.publisherStartsElement,
-                                pbEnd = part.publisherEndsElement,
                                 vScroll = part.allowsVerticalScroll,
                             )
                         },
@@ -351,8 +276,14 @@ object PaginationCache {
         }
 
         fun block(block: com.example.mobilereader.data.model.BlockStyle?) {
-            string(block?.toString())
-            block?.floatImage?.path?.let(::file)
+            string(block?.language)
+            string(block?.direction?.name)
+            string(block?.align?.name)
+            float(block?.fontScale)
+            float(block?.lineHeightMult)
+            string(block?.bold?.toString())
+            string(block?.italic?.toString())
+            string(block?.firstLineIndent?.toString())
         }
 
 
@@ -401,6 +332,8 @@ object PaginationCache {
         EXTERNAL_LINK_TAG,
         INLINE_IMAGE_TAG,
         INLINE_IMAGE_ALT_TAG,
+        INLINE_IMAGE_ID_TAG,
+        INLINE_IMAGE_SIZE_TAG,
     )
 
     private const val FILE_SAMPLE_BYTES = 4 * 1024
