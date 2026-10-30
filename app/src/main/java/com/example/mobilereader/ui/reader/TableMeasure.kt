@@ -88,17 +88,31 @@ fun measureTableLayout(
                     .measure(
                         bidiCell.display,
                         style,
-                        placeholders = tableCellPlaceholders(bidiCell.display),
+                        placeholders = tableCellPlaceholders(
+                            text = bidiCell.display,
+                            availableWidthPx = (availablePx - padding.left - padding.right)
+                                .coerceAtLeast(1),
+                            fontSizePx = style.fontSize.toPx(),
+                        ),
                         constraints = Constraints(),
                     )
                     .size.width + padding.left + padding.right
-                val minIntrinsic = tableCellMinIntrinsicWidthPx(cell.text) { run, placeholders ->
+                val minIntrinsic = tableCellMinIntrinsicWidthPx(
+                    text = cell.text,
+                    availableWidthPx = (availablePx - padding.left - padding.right).coerceAtLeast(1),
+                    fontSizePx = style.fontSize.toPx(),
+                ) { run, placeholders ->
                     val bidiRun = BidiLayoutText.of(run)
                     measurer.measure(
                         text = bidiRun.display,
                         style = style,
                         placeholders = if (bidiRun.hasControls) {
-                            tableCellPlaceholders(bidiRun.display)
+                            tableCellPlaceholders(
+                                text = bidiRun.display,
+                                availableWidthPx = (availablePx - padding.left - padding.right)
+                                    .coerceAtLeast(1),
+                                fontSizePx = style.fontSize.toPx(),
+                            )
                         } else {
                             placeholders
                         },
@@ -146,7 +160,11 @@ fun measureTableLayout(
             val textHeight = measurer.measure(
                 text = bidiCell.display,
                 style = style,
-                placeholders = tableCellPlaceholders(bidiCell.display),
+                placeholders = tableCellPlaceholders(
+                    text = bidiCell.display,
+                    availableWidthPx = (cellWidth - padding.left - padding.right).coerceAtLeast(1),
+                    fontSizePx = style.fontSize.toPx(),
+                ),
                 constraints = Constraints(
                     maxWidth = (cellWidth - padding.left - padding.right).coerceAtLeast(1),
                 ),
@@ -175,13 +193,15 @@ fun measureTableLayout(
 
 internal fun tableCellMinIntrinsicWidthPx(
     text: AnnotatedString,
+    availableWidthPx: Int,
+    fontSizePx: Float,
     measure: (AnnotatedString, List<AnnotatedString.Range<Placeholder>>) -> Int,
 ): Int {
     if (text.isEmpty()) return 0
 
     val runs = NON_WHITESPACE_RUN.findAll(text.text).toList()
     if (runs.isEmpty()) return 0
-    val imageMarks = tableCellPlaceholders(text)
+    val imageMarks = tableCellPlaceholders(text, availableWidthPx, fontSizePx)
     val candidateRanges = linkedSetOf<IntRange>()
 
     runs.sortedByDescending { it.value.length }
@@ -210,7 +230,7 @@ internal fun tableCellMinIntrinsicWidthPx(
     var widest = 0
     for (range in candidateRanges) {
         val fragment = text.subSequence(range.first, range.last + 1)
-        val width = measure(fragment, tableCellPlaceholders(fragment))
+        val width = measure(fragment, tableCellPlaceholders(fragment, availableWidthPx, fontSizePx))
         if (width > widest) widest = width
     }
     return widest
@@ -321,8 +341,9 @@ fun TableBlock(
             }
         },
         content = {
-            for (p in placements) {
+            for ((placementIndex, p) in placements.withIndex()) {
                 val cell = table.rows[p.row].cells[p.cellIndex]
+                val cellPadding = placementPaddings[placementIndex]
                 val align = cell.align ?: if (cell.header) BlockAlign.CENTER else null
                 val decorated = remember(
                     cell.text, footnotes, searchHighlight, colors.accent,
@@ -342,30 +363,37 @@ fun TableBlock(
                     length = cell.text.length,
                     bidi = bidiDisplay,
                 )
+                val textStyle = ReaderMetrics.tableCellStyle(
+                    settings,
+                    fontSize,
+                    layout.fontScale,
+                    cell.header,
+                    language,
+                    table.block,
+                    cell.block,
+                    bookFonts,
+                ).copy(
+                    color = colors.text,
+                    textAlign = when (align) {
+                        BlockAlign.CENTER -> TextAlign.Center
+                        BlockAlign.END -> TextAlign.End
+                        BlockAlign.LEFT -> TextAlign.Left
+                        BlockAlign.RIGHT -> TextAlign.Right
+                        else -> TextAlign.Start
+                    },
+                )
+                val availableTextWidthPx = (p.width - cellPadding.left - cellPadding.right)
+                    .coerceAtLeast(1)
+                val textFontSizePx = with(density) { textStyle.fontSize.toPx() }
                 Text(
                     text = display,
-                    inlineContent = tableCellInlineContent(display, invertImages),
-                    style = ReaderMetrics
-                        .tableCellStyle(
-                            settings,
-                            fontSize,
-                            layout.fontScale,
-                            cell.header,
-                            language,
-                            table.block,
-                            cell.block,
-                            bookFonts,
-                        )
-                        .copy(
-                            color = colors.text,
-                            textAlign = when (align) {
-                                BlockAlign.CENTER -> TextAlign.Center
-                                BlockAlign.END -> TextAlign.End
-                                BlockAlign.LEFT -> TextAlign.Left
-                                BlockAlign.RIGHT -> TextAlign.Right
-                                else -> TextAlign.Start
-                            },
-                        ),
+                    inlineContent = tableCellInlineContent(
+                        text = display,
+                        availableWidthPx = availableTextWidthPx,
+                        fontSizePx = textFontSizePx,
+                        invertImages = invertImages,
+                    ),
+                    style = textStyle,
                     overflow = TextOverflow.Clip,
                     onTextLayout = { fragment?.layout = it },
                     modifier = Modifier.readerHighlights(fragment, highlights),
@@ -417,10 +445,14 @@ internal fun tableCellPhysicalX(
 
 internal fun tableCellPlaceholders(
     text: AnnotatedString,
-) = inlineImagePlaceholders(text)
+    availableWidthPx: Int,
+    fontSizePx: Float,
+) = inlineImagePlaceholders(text, availableWidthPx, fontSizePx)
 
 
 internal fun tableCellInlineContent(
     text: AnnotatedString,
+    availableWidthPx: Int,
+    fontSizePx: Float,
     invertImages: Boolean,
-) = inlineImageContent(text, invertImages)
+) = inlineImageContent(text, availableWidthPx, fontSizePx, invertImages)

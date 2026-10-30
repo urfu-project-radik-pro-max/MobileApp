@@ -5,6 +5,8 @@ import com.example.mobilereader.data.model.ContentElement
 import com.example.mobilereader.data.model.EXTERNAL_LINK_TAG
 import com.example.mobilereader.data.model.FOOTNOTE_TAG
 import com.example.mobilereader.data.model.INLINE_IMAGE_ALT_TAG
+import com.example.mobilereader.data.model.INLINE_IMAGE_ID_TAG
+import com.example.mobilereader.data.model.INLINE_IMAGE_SIZE_TAG
 import com.example.mobilereader.data.model.INLINE_IMAGE_TAG
 import com.example.mobilereader.data.model.LINK_TAG
 import kotlinx.serialization.Serializable
@@ -17,7 +19,7 @@ import java.security.MessageDigest
 object PaginationCache {
 
 
-    private const val FORMAT_VERSION = 9
+    private const val FORMAT_VERSION = 10
 
     @Serializable
     private class CachedPart(
@@ -330,6 +332,8 @@ object PaginationCache {
         EXTERNAL_LINK_TAG,
         INLINE_IMAGE_TAG,
         INLINE_IMAGE_ALT_TAG,
+        INLINE_IMAGE_ID_TAG,
+        INLINE_IMAGE_SIZE_TAG,
     )
 
     private const val FILE_SAMPLE_BYTES = 4 * 1024

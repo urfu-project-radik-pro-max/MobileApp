@@ -144,12 +144,17 @@ class TableGridTest {
         builder.text(" after")
         val text = builder.build()
 
-        val placeholders = tableCellPlaceholders(text)
-        val content = tableCellInlineContent(text, invertImages = false)
+        val placeholders = tableCellPlaceholders(text, availableWidthPx = 300, fontSizePx = 20f)
+        val content = tableCellInlineContent(
+            text = text,
+            availableWidthPx = 300,
+            fontSizePx = 20f,
+            invertImages = false,
+        )
 
         assertEquals(1, placeholders.size)
-        assertEquals(setOf("/tmp/table-cap.png"), content.keys)
-        assertEquals(placeholders.single().item, content.getValue("/tmp/table-cap.png").placeholder)
+        assertEquals(setOf("inline-image-0"), content.keys)
+        assertEquals(placeholders.single().item, content.getValue("inline-image-0").placeholder)
     }
 
     @Test
@@ -161,7 +166,11 @@ class TableGridTest {
         val text = builder.build()
         var measuredPlaceholder = false
 
-        val minWidth = tableCellMinIntrinsicWidthPx(text) { run, placeholders ->
+        val minWidth = tableCellMinIntrinsicWidthPx(
+            text = text,
+            availableWidthPx = 300,
+            fontSizePx = 20f,
+        ) { run, placeholders ->
             if (placeholders.isNotEmpty()) {
                 measuredPlaceholder = true
 
@@ -187,7 +196,11 @@ class TableGridTest {
         val text = builder.build()
         var measurements = 0
 
-        tableCellMinIntrinsicWidthPx(text) { run, placeholders ->
+        tableCellMinIntrinsicWidthPx(
+            text = text,
+            availableWidthPx = 300,
+            fontSizePx = 20f,
+        ) { run, placeholders ->
             measurements++
             if (placeholders.isEmpty()) run.length else 100
         }

@@ -172,7 +172,11 @@ suspend fun paginateBook(
                             text = bidiText.display,
                             style = textStyle,
                             constraints = Constraints(maxWidth = textWidthPx),
-                            placeholders = inlineImagePlaceholders(bidiText.display),
+                            placeholders = inlineImagePlaceholders(
+                                text = bidiText.display,
+                                availableWidthPx = textWidthPx,
+                                fontSizePx = textStyle.fontSize.toPx(),
+                            ),
                         )
                         val firstPaddingPx = if (paragraphStart) topPaddingPx else 0
                         val availableHeightPx = spec.contentHeightPx -

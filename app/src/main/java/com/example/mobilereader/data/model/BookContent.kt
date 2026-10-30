@@ -40,8 +40,36 @@ const val INLINE_IMAGE_TAG = "inlineImage"
 
 const val INLINE_IMAGE_ALT_TAG = "inlineImageAlt"
 
+const val INLINE_IMAGE_ID_TAG = "inlineImageId"
+
+const val INLINE_IMAGE_SIZE_TAG = "inlineImageSize"
+
 
 const val INLINE_IMAGE_CHAR = "\uFFFC"
+
+data class InlineImageSize(
+    val widthFrac: Float? = null,
+    val widthEm: Float? = null,
+    val heightEm: Float? = null,
+) {
+    val isSpecified: Boolean
+        get() = widthFrac != null || widthEm != null || heightEm != null
+
+    fun annotationValue(): String = listOf(widthFrac, widthEm, heightEm)
+        .joinToString(";") { dimension -> dimension?.toString().orEmpty() }
+
+    companion object {
+        fun fromAnnotationValue(value: String): InlineImageSize? {
+            val parts = value.split(';')
+            if (parts.size != 3) return null
+            return InlineImageSize(
+                widthFrac = parts[0].toFloatOrNull(),
+                widthEm = parts[1].toFloatOrNull(),
+                heightEm = parts[2].toFloatOrNull(),
+            )
+        }
+    }
+}
 
 
 class BookContent(

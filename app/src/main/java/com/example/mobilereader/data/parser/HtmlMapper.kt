@@ -20,6 +20,7 @@ import com.example.mobilereader.data.model.EXTERNAL_LINK_TAG
 import com.example.mobilereader.data.model.FOOTNOTE_TAG
 import com.example.mobilereader.data.model.LINK_TAG
 import com.example.mobilereader.data.model.InlineBidiMode
+import com.example.mobilereader.data.model.InlineImageSize
 import com.example.mobilereader.data.model.NoteDocument
 import com.example.mobilereader.data.model.ParagraphStyle
 import com.example.mobilereader.data.model.TableCell
@@ -1208,7 +1209,16 @@ class HtmlMapper(
                                 }
                                 val path = resolveImage(src)
                                 if (path != null) {
-                                    out.inlineImage(path, imageAlt(node))
+                                    val image = imageElement(path, node, imageAlt(node))
+                                    out.inlineImage(
+                                        ref = image.path,
+                                        altText = image.altText,
+                                        size = InlineImageSize(
+                                            widthFrac = image.widthFrac,
+                                            widthEm = image.widthEm,
+                                            heightEm = image.heightEm,
+                                        ),
+                                    )
                                 } else {
                                     imageAlt(node)?.let(out::text)
                                 }
@@ -1221,7 +1231,16 @@ class HtmlMapper(
                                     val alt = node.attr("aria-label").ifBlank {
                                         node.selectFirst("title")?.text().orEmpty()
                                     }
-                                    out.inlineImage(path, alt)
+                                    val image = imageElement(path, node, alt)
+                                    out.inlineImage(
+                                        ref = image.path,
+                                        altText = image.altText,
+                                        size = InlineImageSize(
+                                            widthFrac = image.widthFrac,
+                                            widthEm = image.widthEm,
+                                            heightEm = image.heightEm,
+                                        ),
+                                    )
                                 }
                             }
                         }

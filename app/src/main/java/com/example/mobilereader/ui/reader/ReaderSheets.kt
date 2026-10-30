@@ -114,6 +114,7 @@ import com.example.mobilereader.data.AppTheme
 import com.example.mobilereader.data.PageMargins
 import com.example.mobilereader.data.ReaderFont
 import com.example.mobilereader.data.model.Book
+import com.example.mobilereader.data.model.Bookmark as SavedBookmark
 import com.example.mobilereader.data.model.EmbeddedFont
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.theme.customFontFamily
@@ -135,7 +136,7 @@ fun ReaderPanelsContent(
 
     dragModifier: Modifier = Modifier,
     onChapterClick: (ReaderNavigationTarget) -> Unit,
-    onBookmarkClick: (Int) -> Unit,
+    onBookmarkClick: (SavedBookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
     onCopyQuote: (String) -> Unit,
     onQuoteClick: (Quote) -> Unit,
@@ -313,7 +314,7 @@ private fun BookmarksTab(
     book: Book?,
     bookmarked: Boolean,
     onToggleBookmark: () -> Unit,
-    onBookmarkClick: (Int) -> Unit,
+    onBookmarkClick: (SavedBookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
 ) {
     val bookmarks = book?.bookmarks.orEmpty()
@@ -366,33 +367,36 @@ private fun BookmarksTab(
 @Composable
 private fun BookmarkList(
     ready: ReaderState.Ready,
-    bookmarks: List<com.example.mobilereader.data.model.Bookmark>,
-    onBookmarkClick: (Int) -> Unit,
+    bookmarks: List<SavedBookmark>,
+    onBookmarkClick: (SavedBookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
 ) {
     LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp)) {
         items(bookmarks, key = { it.id }) { bookmark ->
+            val anchor = ready.bookmarkAnchor(bookmark)
+            val available = anchor != null
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
 
 
-                    .clickable(enabled = !bookmark.orphaned) {
-                        onBookmarkClick(bookmark.flatIndex)
+                    .clickable(enabled = available) {
+                        onBookmarkClick(bookmark)
                     }
                     .padding(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = if (bookmark.orphaned) {
+                        text = if (anchor == null) {
                             stringResource(R.string.reader_bookmark_orphaned)
                         } else {
-                            ready.chapterTitles.getOrNull(bookmark.chapterIndex)
-                                ?: stringResource(R.string.reader_chapter_n, bookmark.chapterIndex + 1)
+                            val chapterIndex = ready.chapterAt(anchor.itemIndex)
+                            ready.chapterTitles.getOrNull(chapterIndex)
+                                ?: stringResource(R.string.reader_chapter_n, chapterIndex + 1)
                         },
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (bookmark.orphaned) {
+                        color = if (!available) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
                             MaterialTheme.colorScheme.primary
@@ -402,7 +406,7 @@ private fun BookmarkList(
                     Text(
                         text = bookmark.preview,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (bookmark.orphaned) {
+                        color = if (!available) {
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -440,32 +444,43 @@ private fun QuotesTab(
         items(quotes, key = { it.id }) { quote ->
 
 
-            val anchored = quote.startItem >= 0
+            val range = ready.quoteRange(quote)
+            val available = range != null
             Row(
                 verticalAlignment = Alignment.Top,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(
-                        if (anchored) {
-                            Modifier.clickable { onQuoteClick(quote) }
-                        } else {
-                            Modifier
-                        },
-                    )
+                    .clickable(enabled = available) {
+                        onQuoteClick(quote)
+                    }
                     .padding(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = ready.chapterTitles.getOrNull(quote.chapterIndex)
-                            ?: stringResource(R.string.reader_chapter_n, quote.chapterIndex + 1),
+                        text = if (range == null) {
+                            stringResource(R.string.reader_bookmark_orphaned)
+                        } else {
+                            val chapterIndex = ready.chapterAt(range.start.itemIndex)
+                            ready.chapterTitles.getOrNull(chapterIndex)
+                                ?: stringResource(R.string.reader_chapter_n, chapterIndex + 1)
+                        },
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (available) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = "“${quote.text}”",
                         style = MaterialTheme.typography.bodyMedium,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        color = if (available) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        },
                     )
                 }
                 IconButton(onClick = { onCopyQuote(quote.text) }) {

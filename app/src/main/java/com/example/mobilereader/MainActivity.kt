@@ -36,6 +36,7 @@ enum class VolumeKeyPhase {
 
 class MainActivity : ComponentActivity() {
     var volumeKeyHandler: ((forward: Boolean, phase: VolumeKeyPhase) -> Boolean)? = null
+
     private enum class VolumePressState {
         CAPTURED,
         PASSTHROUGH,

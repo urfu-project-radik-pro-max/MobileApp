@@ -184,6 +184,7 @@ import com.example.mobilereader.data.model.FOOTNOTE_TAG
 import com.example.mobilereader.data.model.LINK_TAG
 import com.example.mobilereader.data.model.LinkedDocumentTarget
 import com.example.mobilereader.data.model.NoteDocument
+import com.example.mobilereader.data.model.Bookmark
 import com.example.mobilereader.data.model.ParagraphStyle
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.ui.reader.selection.BookSelection
@@ -195,7 +196,6 @@ import com.example.mobilereader.ui.reader.selection.SelectionController
 import com.example.mobilereader.ui.reader.selection.SelectionHandles
 import com.example.mobilereader.ui.reader.selection.SelectionText
 import com.example.mobilereader.ui.reader.selection.bookSelectionGestures
-import com.example.mobilereader.ui.reader.selection.range
 import com.example.mobilereader.ui.reader.selection.readerHighlights
 import com.example.mobilereader.ui.reader.selection.rememberReaderHighlights
 import com.example.mobilereader.ui.reader.selection.rememberTextFragment
@@ -684,8 +684,10 @@ private fun ReaderContent(
     }
 
 
-    val quoteRanges = remember(liveBook) {
-        liveBook?.quotes.orEmpty().mapNotNull { it.range() }
+    val quoteRanges = remember(ready, liveBook?.quotes) {
+        liveBook?.quotes.orEmpty().mapNotNull { quote ->
+            ready.quoteRange(quote)
+        }
     }
 
 
@@ -855,8 +857,9 @@ private fun ReaderContent(
             )
         }
 
-        val bookmarked = liveBook?.bookmarks?.any {
-            it.flatIndex in displayedIndex.intValue..(displayedIndex.intValue + viewModel.bookmarkWindow)
+        val bookmarked = liveBook?.bookmarks?.any { bookmark ->
+            ready.bookmarkAnchor(bookmark)?.itemIndex in
+                displayedIndex.intValue..(displayedIndex.intValue + viewModel.bookmarkWindow)
         } == true
 
         val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
@@ -1090,9 +1093,12 @@ private fun ReaderContent(
                     }
                 }
             },
-            onBookmarkClick = { flatIndex ->
+            onBookmarkClick = { bookmark ->
+                val anchor = ready.bookmarkAnchor(bookmark) ?: return@ReaderBottomBar
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                navigateWithHistory(ReaderReturnLocation.Main(flatIndex))
+                navigateWithHistory(
+                    ReaderReturnLocation.Main(anchor.itemIndex, charOffset = anchor.charOffset),
+                )
             },
             onRemoveBookmark = { viewModel.removeBookmark(it) },
             onCopyQuote = { text ->
@@ -1100,11 +1106,13 @@ private fun ReaderContent(
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
             },
             onQuoteClick = { quote ->
+                val range = ready.quoteRange(quote) ?: return@ReaderBottomBar
                 haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-
-
                 navigateWithHistory(
-                    ReaderReturnLocation.Main(quote.startItem, charOffset = quote.startChar),
+                    ReaderReturnLocation.Main(
+                        range.start.itemIndex,
+                        charOffset = range.start.charOffset,
+                    ),
                 )
             },
             onRemoveQuote = { viewModel.removeQuote(it) },
@@ -2647,11 +2655,10 @@ private fun RenderPart(
     val (leftInset, _) = ReaderMetrics.physicalHorizontalInsets(element, contentWidth, fontSize)
     val horizontalPadding = ReaderMetrics.horizontalPadding(settings.pageMargins)
     val leftPadding = horizontalPadding + leftInset
-    val textWidth = with(density) {
-        (contentWidthPx - startInset.roundToPx() - endInset.roundToPx())
-            .coerceAtLeast(1)
-            .toDp()
+    val textWidthPx = with(density) {
+        (contentWidthPx - startInset.roundToPx() - endInset.roundToPx()).coerceAtLeast(1)
     }
+    val textWidth = with(density) { textWidthPx.toDp() }
     val invertImages = appSettings.autoInvertImages && appSettings.theme == AppTheme.OLED
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -2691,16 +2698,17 @@ private fun RenderPart(
                         rawText.length,
                         bidiText,
                     )
+                    val textStyle = ReaderMetrics.textStyle(
+                        element,
+                        settings,
+                        fontSize,
+                        isParagraphStart,
+                        bookFonts,
+                        language,
+                    ).copy(color = defaultColor)
                     Text(
                         text = bidiText.display,
-                        style = ReaderMetrics.textStyle(
-                            element,
-                            settings,
-                            fontSize,
-                            isParagraphStart,
-                            bookFonts,
-                            language,
-                        ).copy(color = defaultColor),
+                        style = textStyle,
                         onTextLayout = { fragment?.layout = it },
                         modifier = Modifier
                             .absolutePadding(
@@ -2710,7 +2718,12 @@ private fun RenderPart(
                             )
                             .width(textWidth)
                             .readerHighlights(fragment, highlights),
-                        inlineContent = inlineImageContent(bidiText.display, invertImages),
+                        inlineContent = inlineImageContent(
+                            text = bidiText.display,
+                            availableWidthPx = textWidthPx,
+                            fontSizePx = with(density) { textStyle.fontSize.toPx() },
+                            invert = invertImages,
+                        ),
                     )
                 }
 
@@ -3096,7 +3109,7 @@ private fun ReaderBottomBar(
     translationSettings: TranslationSettings,
     onSaveTranslationSettings: (TranslationSettings) -> Unit,
     onChapterClick: (ReaderNavigationTarget) -> Unit,
-    onBookmarkClick: (Int) -> Unit,
+    onBookmarkClick: (Bookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
     onCopyQuote: (String) -> Unit,
     onQuoteClick: (Quote) -> Unit,
@@ -3291,9 +3304,9 @@ private fun ReaderBottomBar(
                                         settlePanel(0f)
                                         onChapterClick(index)
                                     },
-                                    onBookmarkClick = { flatIndex ->
+                                    onBookmarkClick = { bookmark ->
                                         settlePanel(0f)
-                                        onBookmarkClick(flatIndex)
+                                        onBookmarkClick(bookmark)
                                     },
                                     onRemoveBookmark = onRemoveBookmark,
                                     onCopyQuote = onCopyQuote,
