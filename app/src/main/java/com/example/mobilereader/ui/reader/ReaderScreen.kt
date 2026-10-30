@@ -150,6 +150,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
@@ -268,9 +269,13 @@ fun ReaderScreen(
 @Composable
 private fun ReaderLightPreview() = ReaderPagePreview(AppTheme.WHITE)
 
-@Preview(name = "Reader · sepia", showBackground = true, widthDp = 412, heightDp = 916)
+@Preview(name = "Reader · Warm", showBackground = true, widthDp = 412, heightDp = 916)
 @Composable
-private fun ReaderSepiaPreview() = ReaderPagePreview(AppTheme.SEPIA)
+private fun ReaderWarmPreview() = ReaderPagePreview(AppTheme.SEPIA)
+
+@Preview(name = "Reader · Dark", showBackground = true, widthDp = 412, heightDp = 916)
+@Composable
+private fun ReaderDarkPreview() = ReaderPagePreview(AppTheme.OLED)
 
 @Composable
 private fun ReaderPagePreview(theme: AppTheme) {
@@ -2385,11 +2390,22 @@ private fun RenderPart(
 private fun SystemBarsEffect(theme: AppTheme, chromeVisible: Boolean) {
     val activity = LocalActivity.current
     val currentTheme by rememberUpdatedState(theme)
+    val chromeScheme = MaterialTheme.colorScheme
+    val colors = remember(theme, chromeScheme) {
+        readerColors(theme, chromeScheme)
+    }
 
-    LaunchedEffect(theme, chromeVisible) {
+    LaunchedEffect(theme, chromeVisible, colors) {
         val window = activity?.window ?: return@LaunchedEffect
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         controller.isAppearanceLightStatusBars = !theme.isDark()
+        controller.isAppearanceLightNavigationBars = !theme.isDark()
+        window.statusBarColor = if (chromeVisible) {
+            colors.chrome.toArgb()
+        } else {
+            colors.background.toArgb()
+        }
+        window.navigationBarColor = colors.background.toArgb()
 
 
         controller.systemBarsBehavior =
@@ -2410,6 +2426,7 @@ private fun SystemBarsEffect(theme: AppTheme, chromeVisible: Boolean) {
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
             controller.show(WindowInsetsCompat.Type.systemBars())
             controller.isAppearanceLightStatusBars = !currentTheme.isDark()
+            controller.isAppearanceLightNavigationBars = !currentTheme.isDark()
         }
     }
 }

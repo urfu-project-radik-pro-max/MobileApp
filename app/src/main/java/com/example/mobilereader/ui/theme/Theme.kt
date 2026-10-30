@@ -15,9 +15,57 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import com.example.mobilereader.data.AppTheme
+
+object FixedWhiteColors {
+    val primary = Color(0xFF526B5D)
+    val secondary = Color(0xFF7D9184)
+    val tertiary = Color(0xFFA47B69)
+    val background = Color(0xFFFAF7F0)
+    val text = Color(0xFF292923)
+    val idiomHighlight = Color(0xFFE4EBDD)
+}
+
+private val lightOnSoftAccent = lerp(FixedWhiteColors.text, Color.Black, 0.40f)
+private val lightSecondaryText = lerp(FixedWhiteColors.text, FixedWhiteColors.primary, 0.40f)
+private val lightPrimaryContainer = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.primary,
+    0.17f,
+)
+private val lightSecondaryContainer = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.secondary,
+    0.26f,
+)
+private val lightTertiaryContainer = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.tertiary,
+    0.23f,
+)
+private val lightSurfaceContainerLow = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.secondary,
+    0.05f,
+)
+private val lightSurfaceContainer = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.secondary,
+    0.10f,
+)
+private val lightSurfaceContainerHigh = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.secondary,
+    0.17f,
+)
+private val lightSurfaceContainerHighest = lerp(
+    FixedWhiteColors.background,
+    FixedWhiteColors.secondary,
+    0.27f,
+)
 
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -99,7 +147,7 @@ val AppTheme.descriptionRes: Int
 
 val AppTheme.swatch: Pair<Color, Color>
     get() = when (this) {
-        AppTheme.WHITE -> Color(0xFFF7FBF7) to Color(0xFF2A6A47)
+        AppTheme.WHITE -> FixedWhiteColors.background to FixedWhiteColors.primary
         AppTheme.SEPIA -> Color(0xFFF3E7D2) to Color(0xFF7E5326)
         AppTheme.OLED -> Color(0xFF000000) to Color(0xFF7BD69B)
     }
@@ -131,17 +179,17 @@ data class MobileReaderExtraColors(
 )
 
 private val LightExtraColors = MobileReaderExtraColors(
-    headerTop = Color(0xFFA5DDBB),
-    headerBottom = Color(0xFFE1F5E8),
-    glass = Color.White.copy(alpha = 0.55f),
-    chip = Color(0xFFDFE9E1),
-    pill = Color.White.copy(alpha = 0.94f),
-    pill60 = Color.White.copy(alpha = 0.62f),
-    lift = Color(0xFFF7FBF7).copy(alpha = 0.82f),
-    nav = Color(0xFFDFE9E1),
-    folder = Color(0xFF2A6A47).copy(alpha = 0.13f),
-    ink = Color(0xFF101A13),
-    ink2 = Color(0xFF3D4F42),
+    headerTop = lightPrimaryContainer,
+    headerBottom = lightSurfaceContainerLow,
+    glass = FixedWhiteColors.background.copy(alpha = 0.55f),
+    chip = lightSurfaceContainerHigh,
+    pill = FixedWhiteColors.background.copy(alpha = 0.94f),
+    pill60 = FixedWhiteColors.background.copy(alpha = 0.62f),
+    lift = FixedWhiteColors.background.copy(alpha = 0.82f),
+    nav = lightSurfaceContainerHigh,
+    folder = FixedWhiteColors.primary.copy(alpha = 0.13f),
+    ink = FixedWhiteColors.text,
+    ink2 = lightSecondaryText,
 )
 
 private val BeigeExtraColors = MobileReaderExtraColors(
@@ -219,42 +267,42 @@ internal fun dynamicMobileReaderColors(scheme: ColorScheme, dark: Boolean): Mobi
 
 
 private val LightColorScheme: ColorScheme = lightColorScheme(
-    primary = Color(0xFF2A6A47),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFC3EBD2),
-    onPrimaryContainer = Color(0xFF06281A),
-    inversePrimary = Color(0xFF8FD3AC),
-    secondary = Color(0xFF4F6354),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFD2E8D8),
-    onSecondaryContainer = Color(0xFF0C2417),
-    tertiary = Color(0xFF3A6470),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFBEE9F7),
-    onTertiaryContainer = Color(0xFF001F27),
-    background = Color(0xFFF7FBF7),
-    onBackground = Color(0xFF131C15),
-    surface = Color(0xFFF7FBF7),
-    onSurface = Color(0xFF131C15),
-    surfaceVariant = Color(0xFFDDE6DE),
-    onSurfaceVariant = Color(0xFF5C6B5F),
-    surfaceTint = Color(0xFF2A6A47),
-    inverseSurface = Color(0xFF2A322B),
-    inverseOnSurface = Color(0xFFEEF3EE),
+    primary = FixedWhiteColors.primary,
+    onPrimary = Color.White,
+    primaryContainer = lightPrimaryContainer,
+    onPrimaryContainer = FixedWhiteColors.text,
+    inversePrimary = lerp(FixedWhiteColors.background, FixedWhiteColors.primary, 0.40f),
+    secondary = FixedWhiteColors.secondary,
+    onSecondary = lightOnSoftAccent,
+    secondaryContainer = lightSecondaryContainer,
+    onSecondaryContainer = FixedWhiteColors.text,
+    tertiary = FixedWhiteColors.tertiary,
+    onTertiary = lightOnSoftAccent,
+    tertiaryContainer = lightTertiaryContainer,
+    onTertiaryContainer = FixedWhiteColors.text,
+    background = FixedWhiteColors.background,
+    onBackground = FixedWhiteColors.text,
+    surface = FixedWhiteColors.background,
+    onSurface = FixedWhiteColors.text,
+    surfaceVariant = lerp(FixedWhiteColors.background, FixedWhiteColors.secondary, 0.16f),
+    onSurfaceVariant = lightSecondaryText,
+    surfaceTint = FixedWhiteColors.primary,
+    inverseSurface = lerp(FixedWhiteColors.text, FixedWhiteColors.primary, 0.22f),
+    inverseOnSurface = FixedWhiteColors.background,
     error = Color(0xFF8C4030),
     onError = Color(0xFFFFFFFF),
     errorContainer = Color(0xFFFFDAD3),
     onErrorContainer = Color(0xFF3A0A02),
-    outline = Color(0xFF6F7F72),
-    outlineVariant = Color(0xFFB3C4B6),
+    outline = lerp(FixedWhiteColors.secondary, FixedWhiteColors.text, 0.35f),
+    outlineVariant = lerp(FixedWhiteColors.background, FixedWhiteColors.secondary, 0.48f),
     scrim = Color(0xFF000000),
-    surfaceBright = Color(0xFFFFFFFF),
-    surfaceDim = Color(0xFFD8E1D9),
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF2F7F2),
-    surfaceContainer = Color(0xFFEDF3EE),
-    surfaceContainerHigh = Color(0xFFDFE9E1),
-    surfaceContainerHighest = Color(0xFFD9E3DB),
+    surfaceBright = FixedWhiteColors.background,
+    surfaceDim = lerp(FixedWhiteColors.background, FixedWhiteColors.secondary, 0.30f),
+    surfaceContainerLowest = FixedWhiteColors.background,
+    surfaceContainerLow = lightSurfaceContainerLow,
+    surfaceContainer = lightSurfaceContainer,
+    surfaceContainerHigh = lightSurfaceContainerHigh,
+    surfaceContainerHighest = lightSurfaceContainerHighest,
 )
 
 

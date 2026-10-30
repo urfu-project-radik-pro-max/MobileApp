@@ -6,6 +6,7 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -15,17 +16,21 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.mobilereader.data.AppSettings
 import com.example.mobilereader.ui.reader.ReaderScreen
 import com.example.mobilereader.ui.theme.MobileReaderTheme
+import com.example.mobilereader.ui.theme.isDark
 import kotlinx.coroutines.launch
 
 enum class VolumeKeyPhase {
@@ -66,6 +71,14 @@ class MainActivity : ComponentActivity() {
                 appSettings.theme,
                 appSettings.dynamicColor
             ) {
+                val colorScheme = MaterialTheme.colorScheme
+                SideEffect {
+                    val controller = WindowCompat.getInsetsController(window, window.decorView)
+                    controller.isAppearanceLightStatusBars = !appSettings.theme.isDark()
+                    controller.isAppearanceLightNavigationBars = !appSettings.theme.isDark()
+                    window.statusBarColor = colorScheme.background.toArgb()
+                    window.navigationBarColor = colorScheme.background.toArgb()
+                }
                 val currentBookId = selectedBookId
                 if (currentBookId != null) {
                     ReaderScreen(bookId = currentBookId, onBack = { selectedBookId = null })
@@ -175,6 +188,7 @@ private fun BookPickerScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
