@@ -2836,7 +2836,6 @@ private fun ReaderBottomBar(
                                     onBrightnessChange = onBrightnessChange,
                                     translationSettings = translationSettings,
                                     onSaveTranslationSettings = onSaveTranslationSettings,
-                                    embeddedFonts = ready.embeddedFonts,
                                 )
 
                                 BarPanel.CONTENTS -> ReaderPanelsContent(

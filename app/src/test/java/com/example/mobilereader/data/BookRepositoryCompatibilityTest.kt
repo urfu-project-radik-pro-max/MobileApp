@@ -19,8 +19,12 @@ class BookRepositoryCompatibilityTest {
                     "readerSettings": {
                         "readingMode": "SCROLL",
                         "fontSizeSp": 27.0,
+                        "font": "CUSTOM",
+                        "customFontPath": "/stored/user-font.ttf",
                         "pageMargins": "WIDE",
-                        "justify": false
+                        "justify": false,
+                        "hyphenation": false,
+                        "hideFootnotes": true
                     }
                 }
             ]
@@ -33,8 +37,11 @@ class BookRepositoryCompatibilityTest {
         val settings = books.single().readerSettings
         assertNotNull(settings)
         assertEquals(27f, settings!!.fontSizeSp)
+        assertEquals(ReaderFont.LITERATA, settings.font)
         assertEquals(PageMargins.WIDE, settings.pageMargins)
-        assertFalse(settings.justify)
+        val rewrittenBooks = bookRepositoryJson.encodeToString(books)
+        assertFalse(rewrittenBooks.contains("\"CUSTOM\""))
+        assertFalse(rewrittenBooks.contains("customFontPath"))
     }
 
     @Test

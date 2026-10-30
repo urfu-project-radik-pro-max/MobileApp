@@ -16,7 +16,7 @@ import org.junit.Test
 
 class ReaderBidiMetricsTest {
 
-    private val settings = ReaderSettings(justify = false)
+    private val settings = ReaderSettings()
 
     @Test
     fun `explicit and automatic base directions reach compose`() {

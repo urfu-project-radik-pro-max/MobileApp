@@ -140,13 +140,15 @@ object ReaderMetrics {
     ): TextStyle {
         val block = blockOf(element)
         val resolvedLanguage = block?.language ?: language
+        val fontFamily = block?.fontFamily?.let { family -> bookFonts[family] }
+            ?: fontFamilyFor(settings.font)
         val base = TextStyle(
             fontSize = fontSize.sp,
             lineHeight = (fontSize * settings.lineHeight).sp,
 
 
-            fontFamily = fontFamilyFor(settings.font, settings.customFontPath),
-            hyphens = if (settings.hyphenation) Hyphens.Auto else Hyphens.None,
+            fontFamily = fontFamily,
+            hyphens = Hyphens.Auto,
             lineBreak = LineBreak.Paragraph,
 
 
@@ -180,7 +182,7 @@ object ReaderMetrics {
         val normal = kind == ParagraphStyle.NORMAL
         val block = element.block
         val scale = block?.fontScale?.coerceIn(0.6f, 2.6f) ?: 1f
-        val defaultAlign = if (normal && settings.justify) TextAlign.Justify else TextAlign.Start
+        val defaultAlign = if (normal) TextAlign.Justify else TextAlign.Start
         val align = textAlign(block?.align) ?: defaultAlign
         return base.copy(
             fontSize = (fontSize * scale).sp,
@@ -261,10 +263,13 @@ object ReaderMetrics {
         val resolvedSize = fontSize * 0.92f * scale
         val resolvedLanguage = cellBlock?.language ?: tableBlock?.language ?: language
         val resolvedDirection = cellBlock?.direction ?: tableBlock?.direction
+        val authoredFontFamily = cellBlock?.fontFamily ?: tableBlock?.fontFamily
+        val fontFamily = authoredFontFamily?.let { family -> bookFonts[family] }
+            ?: fontFamilyFor(settings.font)
         return TextStyle(
             fontSize = resolvedSize.sp,
             lineHeight = (resolvedSize * settings.lineHeight).sp,
-            fontFamily = fontFamilyFor(settings.font, settings.customFontPath),
+            fontFamily = fontFamily,
             fontWeight = if (header) FontWeight.Bold else FontWeight.Normal,
             hyphens = Hyphens.None,
             lineBreak = LineBreak.Paragraph,

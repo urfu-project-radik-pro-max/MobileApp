@@ -21,7 +21,6 @@ import com.example.mobilereader.data.model.BookContent
 import com.example.mobilereader.data.model.Bookmark
 import com.example.mobilereader.data.model.BookNavigationTarget
 import com.example.mobilereader.data.model.ContentElement
-import com.example.mobilereader.data.model.EmbeddedFont
 import com.example.mobilereader.data.model.LinkedDocumentTarget
 import com.example.mobilereader.data.model.NoteDocument
 import com.example.mobilereader.data.model.PageProgression
@@ -29,7 +28,6 @@ import com.example.mobilereader.data.model.previewText
 import com.example.mobilereader.data.model.Quote
 import com.example.mobilereader.data.model.ReadingProgress
 import com.example.mobilereader.data.model.withFootnoteRefStyle
-import com.example.mobilereader.data.model.withoutFootnotes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -101,7 +99,6 @@ sealed interface ReaderState {
         val navigation: List<ReaderNavigationEntry> = emptyList(),
 
         val bookFonts: Map<String, androidx.compose.ui.text.font.FontFamily> = emptyMap(),
-        val embeddedFonts: List<EmbeddedFont> = emptyList(),
 
         val embeddedFontSignature: String = embeddedFontSignature(emptyList()),
 
@@ -308,7 +305,6 @@ class ReaderViewModel(
     private suspend fun rebuildReady(restoredProgress: ReadingProgress? = null) {
         val book = loadedBook ?: return
         val content = loadedContent ?: return
-        val hideFootnotes = settings.value.hideFootnotes
         withContext(Dispatchers.Main.immediate) {
 
             searchJob?.cancel()
@@ -317,7 +313,7 @@ class ReaderViewModel(
 
             clearNavigationHistory()
         }
-        val next = withContext(Dispatchers.Default) { buildReady(book, content, hideFootnotes) }
+        val next = withContext(Dispatchers.Default) { buildReady(book, content) }
         withContext(Dispatchers.Main.immediate) {
             if (restoredProgress != null) {
                 val restored = (next as? ReaderState.Ready)
@@ -332,7 +328,6 @@ class ReaderViewModel(
     private fun buildReady(
         book: Book,
         content: BookContent,
-        hideFootnotes: Boolean,
     ): ReaderState {
 
 
@@ -349,7 +344,7 @@ class ReaderViewModel(
         val chapterTitles = mutableListOf<String?>()
         val chapterDepths = mutableListOf<Int>()
         fun adjustedText(text: androidx.compose.ui.text.AnnotatedString) =
-            if (hideFootnotes) text.withoutFootnotes() else text.withFootnoteRefStyle()
+            text.withFootnoteRefStyle()
         fun adjusted(element: ContentElement): ContentElement = when (element) {
             is ContentElement.Paragraph -> element.copy(text = adjustedText(element.text))
             is ContentElement.Heading -> element.copy(
@@ -436,14 +431,10 @@ class ReaderViewModel(
                 chapterStarts = chapterStarts,
                 chapterTitles = chapterTitles,
                 chapterDepths = chapterDepths,
-                notes = if (hideFootnotes) {
-                    emptyMap()
-                } else {
-                    content.notes.mapValues { (_, note) ->
-                        NoteDocument(
-                            elements = note.elements.map(::adjusted),
-                        )
-                    }
+                notes = content.notes.mapValues { (_, note) ->
+                    NoteDocument(
+                        elements = note.elements.map(::adjusted),
+                    )
                 },
 
                 linkTargets = content.linkTargets.mapNotNull { (key, target) ->
@@ -459,9 +450,6 @@ class ReaderViewModel(
                 },
                 navigation = navigation,
                 bookFonts = loadBookFonts(content),
-                embeddedFonts = content.fonts.distinctBy { it.family }.map { face ->
-                    EmbeddedFont(face.family, face.path)
-                },
                 embeddedFontSignature = embeddedFontSignature(content.fonts),
                 language = content.language,
                 pageProgression = ReaderProgression.resolve(
@@ -738,12 +726,6 @@ class ReaderViewModel(
                 }
         }
 
-        viewModelScope.launch {
-            settings
-                .map { it.hideFootnotes }
-                .distinctUntilChanged()
-                .collect { if (loadedContent != null) rebuildReady() }
-        }
     }
 
     companion object {

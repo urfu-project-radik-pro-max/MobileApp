@@ -12,9 +12,30 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
-@kotlinx.serialization.Serializable
-enum class ReaderFont { LITERATA, SERIF, SANS, CUSTOM }
+@kotlinx.serialization.Serializable(with = ReaderFontSerializer::class)
+enum class ReaderFont { LITERATA, SERIF, SANS }
+
+object ReaderFontSerializer : KSerializer<ReaderFont> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("ReaderFont", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): ReaderFont {
+        val storedName = decoder.decodeString()
+        return ReaderFont.entries.firstOrNull { font -> font.name == storedName }
+            ?: ReaderFont.LITERATA
+    }
+
+    override fun serialize(encoder: Encoder, value: ReaderFont) {
+        encoder.encodeString(value.name)
+    }
+}
 
 @kotlinx.serialization.Serializable
 enum class PageMargins { NARROW, NORMAL, WIDE }
@@ -38,18 +59,12 @@ data class ReaderSettings(
     val lineHeight: Float = 1.5f,
     val font: ReaderFont = ReaderFont.LITERATA,
 
-    val customFontPath: String? = null,
-    val justify: Boolean = true,
-    val hyphenation: Boolean = true,
-
-
     val pageMargins: PageMargins = PageMargins.NORMAL,
 
     val startChaptersOnNewPage: Boolean = true,
 
     val showChapterPagesLeft: Boolean = false,
 
-    val hideFootnotes: Boolean = false,
 
 
     val invertImages: Boolean = false,
@@ -114,13 +129,9 @@ class SettingsRepository(private val context: Context) {
         val fontSize = floatPreferencesKey("font_size_sp")
         val lineHeight = floatPreferencesKey("line_height")
         val font = stringPreferencesKey("font")
-        val customFontPath = stringPreferencesKey("custom_font_path")
-        val justify = booleanPreferencesKey("justify")
-        val hyphenation = booleanPreferencesKey("hyphenation")
         val pageMargins = stringPreferencesKey("page_margins")
         val chapterNewPage = booleanPreferencesKey("chapter_new_page")
         val chapterPagesLeft = booleanPreferencesKey("chapter_pages_left")
-        val hideFootnotes = booleanPreferencesKey("hide_footnotes")
         val invertImages = booleanPreferencesKey("invert_images")
         val pageTurnAnimationEnabled = booleanPreferencesKey("page_turn_animation_enabled")
 
@@ -197,15 +208,9 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.fontSize] = updated.fontSizeSp
             prefs[Keys.lineHeight] = updated.lineHeight
             prefs[Keys.font] = updated.font.name
-            updated.customFontPath
-                ?.let { prefs[Keys.customFontPath] = it }
-                ?: prefs.remove(Keys.customFontPath)
-            prefs[Keys.justify] = updated.justify
-            prefs[Keys.hyphenation] = updated.hyphenation
             prefs[Keys.pageMargins] = updated.pageMargins.name
             prefs[Keys.chapterNewPage] = updated.startChaptersOnNewPage
             prefs[Keys.chapterPagesLeft] = updated.showChapterPagesLeft
-            prefs[Keys.hideFootnotes] = updated.hideFootnotes
             prefs[Keys.invertImages] = updated.invertImages
             prefs[Keys.pageTurnAnimationEnabled] = updated.pageTurnAnimationEnabled
             ReaderGestureSettingsStore.write(prefs, updated)
@@ -235,13 +240,9 @@ class SettingsRepository(private val context: Context) {
             fontSizeSp = this[Keys.fontSize] ?: defaults.fontSizeSp,
             lineHeight = this[Keys.lineHeight] ?: defaults.lineHeight,
             font = enumOrDefault(this[Keys.font], defaults.font),
-            customFontPath = this[Keys.customFontPath],
-            justify = this[Keys.justify] ?: defaults.justify,
-            hyphenation = this[Keys.hyphenation] ?: defaults.hyphenation,
             pageMargins = enumOrDefault(this[Keys.pageMargins], defaults.pageMargins),
             startChaptersOnNewPage = this[Keys.chapterNewPage] ?: defaults.startChaptersOnNewPage,
             showChapterPagesLeft = this[Keys.chapterPagesLeft] ?: defaults.showChapterPagesLeft,
-            hideFootnotes = this[Keys.hideFootnotes] ?: defaults.hideFootnotes,
             invertImages = this[Keys.invertImages] ?: defaults.invertImages,
             pageTurnAnimationEnabled = this[Keys.pageTurnAnimationEnabled]
                 ?: defaults.pageTurnAnimationEnabled,

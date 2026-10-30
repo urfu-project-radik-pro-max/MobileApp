@@ -69,9 +69,9 @@ class PaginationSpec(
         "e$LAYOUT_ENGINE_VERSION | $contentWidthPx x $contentHeightPx | " +
             "$fontSize | ${settings.lineHeight} | " +
             "density=${density.density.toBits()}/${density.fontScale.toBits()} | " +
-            "${settings.font} | ${settings.customFontPath} | " +
-            "${settings.justify} | ${settings.hyphenation} | centerHeadings=${settings.centerHeadings} | " +
-            "${settings.startChaptersOnNewPage} | ${settings.hideFootnotes} | " +
+            "${settings.font} | " +
+            "centerHeadings=${settings.centerHeadings} | " +
+            "${settings.startChaptersOnNewPage} | " +
             "lang=$language | " +
             "embeddedFonts=$embeddedFontSignature"
 }

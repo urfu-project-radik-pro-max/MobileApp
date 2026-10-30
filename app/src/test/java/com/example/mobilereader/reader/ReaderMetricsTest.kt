@@ -1,6 +1,8 @@
 package com.example.mobilereader.reader
 
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
@@ -67,6 +69,8 @@ class ReaderMetricsTest {
         assertEquals(30f, ordinaryStyle.lineHeight.value, 0.001f)
         assertEquals(30f, enlargedStyle.fontSize.value, 0.001f)
         assertEquals(45f, enlargedStyle.lineHeight.value, 0.001f)
+        assertEquals(TextAlign.Justify, ordinaryStyle.textAlign)
+        assertEquals(Hyphens.Auto, ordinaryStyle.hyphens)
         assertEquals(TextAlign.Center, enlargedStyle.textAlign)
     }
 
@@ -99,7 +103,38 @@ class ReaderMetricsTest {
         )
         assertEquals(18.4f, style.fontSize.value, 0.001f)
         assertEquals(18.4f * 1.4f, style.lineHeight.value, 0.001f)
+        assertEquals(Hyphens.None, style.hyphens)
         assertEquals(TextDirection.Rtl, style.textDirection)
         assertEquals("ar", style.localeList?.firstOrNull()?.toLanguageTag())
+    }
+
+    @Test
+    fun `embedded book font reaches paragraphs and table cells`() {
+        val bookFamily = FontFamily.Cursive
+        val availableFonts = mapOf("publisher face" to bookFamily)
+        val authoredStyle = BlockStyle(fontFamily = "publisher face")
+        val paragraph = ContentElement.Paragraph(
+            AnnotatedString("Publisher text"),
+            block = authoredStyle,
+        )
+
+        val paragraphStyle = ReaderMetrics.textStyle(
+            element = paragraph,
+            settings = settings,
+            fontSize = 20f,
+            bookFonts = availableFonts,
+        )
+        val tableCellStyle = ReaderMetrics.tableCellStyle(
+            settings = settings,
+            fontSize = 20f,
+            scale = 1f,
+            header = false,
+            language = null,
+            tableBlock = authoredStyle,
+            bookFonts = availableFonts,
+        )
+
+        assertEquals(bookFamily, paragraphStyle.fontFamily)
+        assertEquals(bookFamily, tableCellStyle.fontFamily)
     }
 }

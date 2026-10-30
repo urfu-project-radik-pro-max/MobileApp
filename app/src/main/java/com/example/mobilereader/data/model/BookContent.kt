@@ -321,17 +321,3 @@ fun AnnotatedString.withFootnoteRefStyle(): AnnotatedString {
     }
     return builder.toAnnotatedString()
 }
-
-
-fun AnnotatedString.withoutFootnotes(): AnnotatedString {
-    val refs = getStringAnnotations(FOOTNOTE_TAG, 0, length).sortedBy { it.start }
-    if (refs.isEmpty()) return this
-    val builder = AnnotatedString.Builder()
-    var position = 0
-    for (ref in refs) {
-        if (ref.start > position) builder.append(subSequence(position, ref.start))
-        position = maxOf(position, ref.end)
-    }
-    if (position < length) builder.append(subSequence(position, length))
-    return builder.toAnnotatedString()
-}

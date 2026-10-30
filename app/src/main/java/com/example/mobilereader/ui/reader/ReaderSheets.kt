@@ -5,7 +5,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -35,23 +34,18 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.BrightnessAuto
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DensityLarge
 import androidx.compose.material.icons.rounded.DensitySmall
-import androidx.compose.material.icons.rounded.FormatAlignJustify
 import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.FormatSize
 import androidx.compose.material.icons.rounded.InvertColors
 import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material.icons.rounded.Smartphone
-import androidx.compose.material.icons.rounded.Superscript
 import androidx.compose.material.icons.rounded.Tag
-import androidx.compose.material.icons.rounded.TextFields
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.WbSunny
@@ -64,7 +58,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -97,7 +91,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
@@ -115,9 +108,7 @@ import com.example.mobilereader.data.PageMargins
 import com.example.mobilereader.data.ReaderFont
 import com.example.mobilereader.data.model.Book
 import com.example.mobilereader.data.model.Bookmark as SavedBookmark
-import com.example.mobilereader.data.model.EmbeddedFont
 import com.example.mobilereader.data.model.Quote
-import com.example.mobilereader.ui.theme.customFontFamily
 import com.example.mobilereader.data.ReaderSettings
 import com.example.mobilereader.data.TranslationSettings
 import kotlin.math.pow
@@ -527,9 +518,7 @@ private enum class ReaderSettingsCategory(
     val icon: ImageVector,
 ) {
     APPEARANCE(R.string.reader_settings_tab_appearance, Icons.Rounded.Palette),
-    TEXT(R.string.reader_settings_tab_text, Icons.Rounded.TextFields),
     PAGES(R.string.reader_settings_tab_pages, Icons.AutoMirrored.Rounded.MenuBook),
-    DEVICE(R.string.reader_settings_tab_device, Icons.Rounded.Smartphone),
     TRANSLATION(R.string.reader_settings_tab_translation, Icons.Rounded.Translate),
 }
 
@@ -546,7 +535,6 @@ fun ReaderSettingsControls(
     onBrightnessChange: (Float?) -> Unit,
     translationSettings: TranslationSettings,
     onSaveTranslationSettings: (TranslationSettings) -> Unit,
-    embeddedFonts: List<EmbeddedFont> = emptyList(),
 ) {
     val safeCategoryIndex = selectedCategoryIndex.coerceIn(0, ReaderSettingsCategory.entries.lastIndex)
     val selectedCategory = ReaderSettingsCategory.entries[safeCategoryIndex]
@@ -600,15 +588,14 @@ fun ReaderSettingsControls(
                         ),
                     )
                 },
-                embeddedFonts = embeddedFonts,
             )
         }
-        SecondaryScrollableTabRow(
+        SecondaryTabRow(
             selectedTabIndex = safeCategoryIndex,
+            modifier = Modifier.fillMaxWidth(),
             containerColor = colors.chrome,
             contentColor = colors.accent,
             divider = {},
-            edgePadding = 0.dp,
         ) {
             ReaderSettingsCategory.entries.forEachIndexed { index, category ->
                 Tab(
@@ -741,8 +728,6 @@ private fun ReaderSettingsCategoryContent(
     translationSettings: TranslationSettings,
     onTranslationSettingsChange: (TranslationSettings) -> Unit,
     onSaveTranslationSettings: () -> Unit,
-    embeddedFonts: List<EmbeddedFont> = emptyList(),
-
 ) {
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
@@ -958,138 +943,30 @@ private fun ReaderSettingsCategoryContent(
 
 
                 PanelSectionLabel(stringResource(R.string.reader_font), colors)
-                var showFontDialog by remember { mutableStateOf(false) }
-                var fontsVersion by remember { mutableIntStateOf(0) }
-                val fontPicker = if (LocalInspectionMode.current) null else androidx.activity.compose.rememberLauncherForActivityResult(
-                    androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
-                ) { uri ->
-                    if (uri != null) {
-                        val stored = storeCustomFont(context, uri)
-                        if (stored != null) {
-                            fontsVersion++
-                            onUpdate { it.copy(font = ReaderFont.CUSTOM, customFontPath = stored) }
-                        }
-                    }
-                }
-
-
                 ChipRow(
                     options = listOf(
                         stringResource(R.string.reader_font_literata),
+                        stringResource(R.string.reader_font_serif),
                         stringResource(R.string.reader_font_sans),
-                        stringResource(R.string.reader_font_custom),
                     ),
                     optionFontFamilies = listOf(
                         com.example.mobilereader.ui.theme.LiterataFamily,
+                        androidx.compose.ui.text.font.FontFamily.Serif,
                         androidx.compose.ui.text.font.FontFamily.SansSerif,
-                        settings.customFontPath?.let(::customFontFamily),
                     ),
-                    selectedIndex = when {
-                        settings.font == ReaderFont.SANS -> 1
-                        settings.font == ReaderFont.CUSTOM -> 2
-                        else -> 0
-                    },
+                    selectedIndex = ReaderFont.entries.indexOf(settings.font),
                     colors = colors,
                     onSelect = { index ->
-                        when (index) {
-                            0 -> onUpdate { it.copy(font = ReaderFont.LITERATA) }
-                            1 -> onUpdate { it.copy(font = ReaderFont.SANS) }
-                            else -> showFontDialog = true
+                        onUpdate { current ->
+                            current.copy(font = ReaderFont.entries[index])
                         }
                     },
                 )
-                if (showFontDialog) {
-                    CustomFontsDialog(
-                        colors = colors,
-                        bookFonts = embeddedFonts,
-                        bodyFontPath = null,
-                        onPickBookFont = { font ->
-                            val stored = storeBookFont(context, font.path, font.name)
-                            if (stored != null) {
-                                onUpdate {
-                                    it.copy(font = ReaderFont.CUSTOM, customFontPath = stored)
-                                }
-                            }
-                            showFontDialog = false
-                        },
-                        selectedPath = settings.customFontPath
-                            ?.takeIf { settings.font == ReaderFont.CUSTOM },
-                        fontsVersion = fontsVersion,
-                        onAdd = {
-                            fontPicker?.launch(
-                                arrayOf(
-                                    "font/ttf",
-                                    "font/otf",
-                                    "font/*",
-                                    "application/x-font-ttf",
-                                    "application/octet-stream",
-                                ),
-                            )
-                        },
-                        onPick = { path ->
-                            onUpdate { it.copy(font = ReaderFont.CUSTOM, customFontPath = path) }
-                            showFontDialog = false
-                        },
-                        onDelete = { path ->
-                            java.io.File(path).delete()
-                            fontsVersion++
-                            if (settings.customFontPath == path) {
-                                onUpdate {
-                                    it.copy(
-                                        font = if (it.font == ReaderFont.CUSTOM) {
-                                            ReaderFont.LITERATA
-                                        } else {
-                                            it.font
-                                        },
-                                        customFontPath = null,
-                                    )
-                                }
-                            }
-                        },
-                        onDismiss = { showFontDialog = false },
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-            }
-            ReaderSettingsCategory.TEXT -> {
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(colors) {
-                    SettingToggleRow(
-                        icon = Icons.Rounded.FormatAlignJustify,
-                        title = stringResource(R.string.reader_justify),
-                        colors = colors,
-                        checked = settings.justify,
-                        onCheckedChange = { value ->
-                            onUpdate { it.copy(justify = value) }
-                        },
-                    )
-                    PanelDivider(colors)
-                    SettingToggleRow(
-                        icon = Icons.Rounded.Remove,
-                        title = stringResource(R.string.reader_hyphenation),
-                        colors = colors,
-                        checked = settings.hyphenation,
-                        onCheckedChange = { value ->
-                            onUpdate { it.copy(hyphenation = value) }
-                        },
-                    )
-                    PanelDivider(colors)
-                    SettingToggleRow(
-                        icon = Icons.Rounded.Superscript,
-                        title = stringResource(R.string.reader_hide_footnotes),
-                        subtitle = stringResource(R.string.reader_hide_footnotes_subtitle),
-                        colors = colors,
-                        checked = settings.hideFootnotes,
-                        onCheckedChange = { onUpdate { s -> s.copy(hideFootnotes = it) } },
-                    )
-                }
 
                 Spacer(Modifier.height(24.dp))
             }
             ReaderSettingsCategory.PAGES -> {
                 Spacer(Modifier.height(18.dp))
-
 
                 PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
                 val marginOptions = PageMargins.entries
@@ -1109,7 +986,6 @@ private fun ReaderSettingsCategoryContent(
                 )
 
                 Spacer(Modifier.height(20.dp))
-                PanelSectionLabel(stringResource(R.string.reader_section_page_mode_settings), colors)
                 SettingsGroup(colors) {
                     SettingToggleRow(
                         icon = Icons.AutoMirrored.Rounded.MenuBook,
@@ -1134,11 +1010,7 @@ private fun ReaderSettingsCategoryContent(
                         checked = settings.showChapterPagesLeft,
                         onCheckedChange = { onUpdate { s -> s.copy(showChapterPagesLeft = it) } },
                     )
-                }
-
-                Spacer(Modifier.height(20.dp))
-                PanelSectionLabel(stringResource(R.string.reader_section_gestures), colors)
-                SettingsGroup(colors) {
+                    PanelDivider(colors)
                     SettingToggleRow(
                         icon = Icons.Rounded.TouchApp,
                         title = stringResource(R.string.reader_edge_tap_paging),
@@ -1162,13 +1034,7 @@ private fun ReaderSettingsCategoryContent(
                             }
                         },
                     )
-                }
-
-                Spacer(Modifier.height(24.dp))
-            }
-            ReaderSettingsCategory.DEVICE -> {
-                Spacer(Modifier.height(20.dp))
-                SettingsGroup(colors) {
+                    PanelDivider(colors)
                     SettingToggleRow(
                         icon = Icons.Rounded.Lightbulb,
                         title = stringResource(R.string.settings_keep_screen_on),
@@ -1195,273 +1061,6 @@ private fun ReaderSettingsCategoryContent(
                     onChange = onTranslationSettingsChange,
                     onSave = onSaveTranslationSettings,
                 )
-            }
-        }
-    }
-}
-
-
-private fun storeBookFont(
-    context: android.content.Context,
-    sourcePath: String,
-    displayName: String?,
-): String? = runCatching {
-    val bytes = java.io.File(sourcePath).readBytes()
-    if (bytes.size <= 4) return null
-    val head = bytes.copyOfRange(0, 4)
-    val extension = when {
-        head.contentEquals("OTTO".toByteArray()) -> "otf"
-        head.contentEquals("ttcf".toByteArray()) -> "ttc"
-        head.contentEquals("true".toByteArray()) -> "ttf"
-        head[0].toInt() == 0x00 && head[1].toInt() == 0x01 &&
-            head[2].toInt() == 0x00 && head[3].toInt() == 0x00 -> "ttf"
-        else -> return null
-    }
-    val base = (displayName ?: java.io.File(sourcePath).nameWithoutExtension)
-        .replace(Regex("""[\\/:*?"<>|]"""), "_")
-        .trim()
-        .take(60)
-        .ifBlank { "book-font" }
-
-    val dir = java.io.File(context.filesDir, "fonts").apply { mkdirs() }
-    var target = java.io.File(dir, "$base.$extension")
-    var counter = 2
-    while (target.exists() && !target.readBytes().contentEquals(bytes)) {
-        target = java.io.File(dir, "${base}_$counter.$extension")
-        counter++
-    }
-    if (!target.exists()) target.writeBytes(bytes)
-    target.absolutePath
-}.getOrNull()
-
-
-private fun storeCustomFont(context: android.content.Context, uri: android.net.Uri): String? =
-    runCatching {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: return null
-
-        val ok = bytes.size > 4 && (
-            (bytes[0].toInt() == 0x00 && bytes[1].toInt() == 0x01 &&
-                bytes[2].toInt() == 0x00 && bytes[3].toInt() == 0x00) ||
-                bytes.copyOfRange(0, 4).contentEquals("OTTO".toByteArray()) ||
-                bytes.copyOfRange(0, 4).contentEquals("true".toByteArray()) ||
-                bytes.copyOfRange(0, 4).contentEquals("ttcf".toByteArray())
-            )
-        if (!ok) return null
-
-        val display = runCatching {
-            context.contentResolver.query(
-                uri,
-                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
-                null,
-                null,
-                null,
-            )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-        }.getOrNull()
-            ?: uri.lastPathSegment?.substringAfterLast('/')
-            ?: "font"
-        val base = display.substringBeforeLast('.')
-            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            .trim()
-            .take(60)
-            .ifBlank { "font" }
-        val extension = display.substringAfterLast('.', "ttf").lowercase()
-            .takeIf { it in setOf("ttf", "otf", "ttc") } ?: "ttf"
-
-        val dir = java.io.File(context.filesDir, "fonts").apply { mkdirs() }
-        var target = java.io.File(dir, "$base.$extension")
-        var counter = 2
-        while (target.exists() && !target.readBytes().contentEquals(bytes)) {
-            target = java.io.File(dir, "${base}_$counter.$extension")
-            counter++
-        }
-        if (!target.exists()) target.writeBytes(bytes)
-        target.absolutePath
-    }.getOrNull()
-
-
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun CustomFontsDialog(
-    colors: ReaderColors,
-
-    bookFonts: List<EmbeddedFont> = emptyList(),
-
-    bodyFontPath: String? = null,
-    onPickBookFont: (EmbeddedFont) -> Unit = {},
-    selectedPath: String?,
-    fontsVersion: Int,
-    onAdd: () -> Unit,
-    onPick: (String) -> Unit,
-    onDelete: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    val haptics = LocalHapticFeedback.current
-    val fonts = remember(fontsVersion) {
-        java.io.File(context.filesDir, "fonts").listFiles()
-            ?.filter { it.isFile }
-            ?.sortedBy { it.name.lowercase() }
-            .orEmpty()
-    }
-
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        androidx.compose.material3.Surface(
-            color = colors.chrome,
-            contentColor = colors.onChrome,
-            shape = RoundedCornerShape(28.dp),
-        ) {
-            Column(Modifier.padding(20.dp)) {
-                Text(
-                    text = stringResource(R.string.reader_fonts_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(14.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(colors.accent)
-                        .clickable {
-                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            onAdd()
-                        }
-                        .padding(vertical = 13.dp),
-                ) {
-                    Icon(
-                        Icons.Rounded.Add,
-                        contentDescription = null,
-                        tint = colors.background,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.reader_font_add),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.background,
-                    )
-                }
-
-
-                if (bookFonts.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = stringResource(R.string.reader_fonts_in_book),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.secondaryText,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    for (font in bookFonts) {
-                        val isBodyFace = font.path == bodyFontPath
-                        val family = remember(font.path) { customFontFamily(font.path) }
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 6.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    colors.accent.copy(alpha = if (isBodyFace) 0.16f else 0.06f),
-                                )
-                                .clickable {
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onPickBookFont(font)
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                        ) {
-                            Text(
-                                text = font.name,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontFamily = family,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            if (isBodyFace) {
-                                Text(
-                                    text = stringResource(R.string.reader_font_from_book),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = colors.accent,
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                if (fonts.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.reader_fonts_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.secondaryText,
-                        modifier = Modifier.padding(vertical = 14.dp, horizontal = 4.dp),
-                    )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 340.dp),
-                    ) {
-                        items(fonts, key = { it.absolutePath }) { file ->
-                            var menuOpen by remember { mutableStateOf(false) }
-                            Box {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .combinedClickable(
-                                            onClick = { onPick(file.absolutePath) },
-                                            onLongClick = {
-                                                haptics.performHapticFeedback(
-                                                    HapticFeedbackType.LongPress,
-                                                )
-                                                menuOpen = true
-                                            },
-                                        )
-                                        .padding(vertical = 13.dp, horizontal = 10.dp),
-                                ) {
-                                    Text(
-                                        text = file.nameWithoutExtension,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontFamily = com.example.mobilereader.ui.theme
-                                            .customFontFamily(file.absolutePath),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    if (file.absolutePath == selectedPath) {
-                                        Spacer(Modifier.width(8.dp))
-                                        Icon(
-                                            Icons.Rounded.Check,
-                                            contentDescription = null,
-                                            tint = colors.accent,
-                                        )
-                                    }
-                                }
-                                androidx.compose.material3.DropdownMenu(
-                                    expanded = menuOpen,
-                                    onDismissRequest = { menuOpen = false },
-                                ) {
-                                    androidx.compose.material3.DropdownMenuItem(
-                                        text = {
-                                            Text(stringResource(R.string.reader_font_delete))
-                                        },
-                                        leadingIcon = {
-                                            Icon(Icons.Rounded.Delete, contentDescription = null)
-                                        },
-                                        onClick = {
-                                            menuOpen = false
-                                            onDelete(file.absolutePath)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }

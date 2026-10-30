@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="reader_settings_tab_appearance">Внешний вид</string>
-    <string name="reader_settings_tab_text">Текст</string>
     <string name="reader_settings_tab_pages">Страницы</string>
-    <string name="reader_settings_tab_device">Устройство</string>
     <string name="reader_settings_tab_translation">Перевод</string>
+    <string name="reader_font_serif">С засечками</string>
     <string name="reader_section_page_mode_settings">Настройки постраничного режима</string>
     <string name="reader_section_gestures">Жесты</string>
     <string name="reader_edge_tap_paging">Перелистывание касанием краёв</string>
