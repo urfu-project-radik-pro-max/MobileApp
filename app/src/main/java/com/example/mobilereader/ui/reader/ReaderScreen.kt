@@ -75,6 +75,8 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -295,6 +297,9 @@ private fun ReaderPagePreview(theme: AppTheme) {
                     searchQuery = "",
                     onQueryChange = {},
                     onSearch = {},
+                    menuExpanded = false,
+                    onMenuExpandedChange = {},
+                    onSectionSelected = {},
                     onBack = {},
                     onCloseSearch = {},
                 )
@@ -387,6 +392,12 @@ private fun ReaderContent(
     var searchVisible by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var searchHighlight by remember { mutableStateOf<String?>(null) }
+    var menuExpanded by remember { mutableStateOf(false) }
+    var selectedPanel by remember { mutableStateOf<ReaderPanelSection?>(null) }
+    var lastPanel by remember { mutableStateOf(ReaderPanelSection.CONTENTS) }
+    var closeBottomPanelSignal by remember { mutableIntStateOf(0) }
+    var topBarHeightPx by remember { mutableIntStateOf(0) }
+    val topBarHeight = with(LocalDensity.current) { topBarHeightPx.toDp() }
     LaunchedEffect(searchQuery) {
         delay(150.milliseconds)
         viewModel.search(searchQuery)
@@ -706,7 +717,7 @@ private fun ReaderContent(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.background),
@@ -811,8 +822,113 @@ private fun ReaderContent(
         LaunchedEffect(fullPages) { if (fullPages != null) lastFullPages = fullPages }
         val searchPages = fullPages ?: lastFullPages
 
-        var topBarHeightPx by remember { mutableIntStateOf(0) }
-        val topBarHeight = with(LocalDensity.current) { topBarHeightPx.toDp() }
+        BackHandler(enabled = selectedPanel != null) { selectedPanel = null }
+
+        val topPanelHeight = (maxHeight - topBarHeight -
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() - 8.dp)
+            .coerceAtMost(maxHeight * 0.75f)
+            .coerceAtLeast(0.dp)
+        var topPanelDrag by remember { mutableFloatStateOf(0f) }
+        val topPanelDismissDragPx = with(LocalDensity.current) { 48.dp.toPx() }
+        AnimatedVisibility(
+            visible = selectedPanel != null,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = topBarHeight),
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+        ) {
+            Surface(
+                color = colors.chrome,
+                contentColor = colors.onChrome,
+                shape = RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp),
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(topPanelHeight),
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    (selectedPanel ?: lastPanel).let { section ->
+                        Text(
+                            text = stringResource(when (section) {
+                                ReaderPanelSection.CONTENTS -> R.string.reader_contents
+                                ReaderPanelSection.BOOKMARKS -> R.string.reader_bookmarks
+                                ReaderPanelSection.QUOTES -> R.string.reader_quotes
+                            }),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                        )
+                        Box(Modifier.weight(1f)) {
+                            ReaderPanelsContent(
+                                colorScheme = chromeScheme,
+                                ready = ready,
+                                book = liveBook,
+                                currentChapter = ready.chapterAt(displayedIndex.intValue),
+                                chapterStartPages = searchPages?.map { it.firstItemIndex }?.let { pageStarts ->
+                                    ready.chapterStarts.map { start ->
+                                        pageStarts.indexOfLast { it <= start }.coerceAtLeast(0)
+                                    }
+                                },
+                                section = section,
+                                onChapterClick = { target ->
+                                    selectedPanel = null
+                                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                    when (target) {
+                                        is ReaderNavigationTarget.ReadingOrder -> navigateWithHistory(
+                                            ReaderReturnLocation.Main(target.flatItemIndex),
+                                        )
+                                        is ReaderNavigationTarget.Linked -> navigateWithHistory(
+                                            ReaderReturnLocation.Linked(target.target.documentId, target.target.elementIndex),
+                                        )
+                                    }
+                                },
+                                onBookmarkClick = { bookmark ->
+                                    ready.bookmarkAnchor(bookmark)?.let { anchor ->
+                                        selectedPanel = null
+                                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                        navigateWithHistory(ReaderReturnLocation.Main(anchor.itemIndex, charOffset = anchor.charOffset))
+                                    }
+                                },
+                                onRemoveBookmark = { viewModel.removeBookmark(it) },
+                                onCopyQuote = { text ->
+                                    clipboard.setText(AnnotatedString(text))
+                                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                },
+                                onQuoteClick = { quote ->
+                                    ready.quoteRange(quote)?.let { range ->
+                                        selectedPanel = null
+                                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                                        navigateWithHistory(ReaderReturnLocation.Main(
+                                            range.start.itemIndex, charOffset = range.start.charOffset,
+                                        ))
+                                    }
+                                },
+                                onRemoveQuote = { viewModel.removeQuote(it) },
+                                bookmarked = bookmarked,
+                                onToggleBookmark = {
+                                    haptics.performHapticFeedback(
+                                        if (bookmarked) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
+                                    )
+                                    viewModel.toggleBookmarkAt(displayedIndex.intValue)
+                                },
+                            )
+                        }
+                    }
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxWidth().height(24.dp)
+                            .draggable(
+                                orientation = Orientation.Vertical,
+                                state = rememberDraggableState { topPanelDrag += it },
+                                onDragStopped = {
+                                    if (topPanelDrag < -topPanelDismissDragPx) selectedPanel = null
+                                    topPanelDrag = 0f
+                                },
+                            )
+                            .clickable { selectedPanel = null },
+                    ) {
+                        Box(Modifier.size(width = 36.dp, height = 4.dp)
+                            .clip(CircleShape).background(colors.onChrome.copy(alpha = 0.35f)))
+                    }
+                }
+            }
+        }
 
         ReaderSearchOverlay(
             visible = searchVisible,
@@ -853,7 +969,29 @@ private fun ReaderContent(
             searchVisible = searchVisible,
             searchQuery = searchQuery,
             onQueryChange = { searchQuery = it },
-            onSearch = { searchVisible = true },
+            onSearch = {
+                menuExpanded = false
+                selectedPanel = null
+                selection.clear()
+                closeBottomPanelSignal++
+                searchVisible = true
+            },
+            menuExpanded = menuExpanded,
+            onMenuExpandedChange = { expanded ->
+                menuExpanded = expanded
+                if (expanded) {
+                    selectedPanel = null
+                    closeBottomPanelSignal++
+                }
+            },
+            onSectionSelected = { section ->
+                searchVisible = false
+                selection.clear()
+                closeBottomPanelSignal++
+                lastPanel = section
+                selectedPanel = section
+                onShowChrome()
+            },
             onBack = onBack,
             onCloseSearch = { searchVisible = false },
             panelFraction = { panelFraction.floatValue },
@@ -917,14 +1055,13 @@ private fun ReaderContent(
             onReturn = ::navigateBackInBook,
 
 
-            allowBackDismiss = !searchVisible && linkedDocumentId == null,
+            allowBackDismiss = !searchVisible && selectedPanel == null &&
+                !menuExpanded && linkedDocumentId == null,
             colors = colors,
             panelFraction = panelFraction,
             chapterStartPages = chapterStartPages,
             totalPages = pageInfo?.second,
             progressValuesReady = pagesReady,
-            ready = ready,
-            book = liveBook,
             currentChapter = currentChapter,
             chapterLabel = ready.chapterTitles.getOrNull(currentChapter)
                 ?: stringResource(R.string.reader_chapter_n, currentChapter + 1),
@@ -983,52 +1120,11 @@ private fun ReaderContent(
             onBrightnessChange = setBrightness,
             translationSettings = translationSettings,
             onSaveTranslationSettings = { updated -> viewModel.updateTranslationSettings { updated } },
-            onChapterClick = { target ->
-                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                when (target) {
-                    is ReaderNavigationTarget.ReadingOrder -> {
-                        navigateWithHistory(ReaderReturnLocation.Main(target.flatItemIndex))
-                    }
-
-                    is ReaderNavigationTarget.Linked -> {
-                        navigateWithHistory(
-                            ReaderReturnLocation.Linked(
-                                documentId = target.target.documentId,
-                                itemIndex = target.target.elementIndex,
-                            ),
-                        )
-                    }
-                }
-            },
-            onBookmarkClick = { bookmark ->
-                val anchor = ready.bookmarkAnchor(bookmark) ?: return@ReaderBottomBar
-                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                navigateWithHistory(
-                    ReaderReturnLocation.Main(anchor.itemIndex, charOffset = anchor.charOffset),
-                )
-            },
-            onRemoveBookmark = { viewModel.removeBookmark(it) },
-            onCopyQuote = { text ->
-                clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
-                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-            },
-            onQuoteClick = { quote ->
-                val range = ready.quoteRange(quote) ?: return@ReaderBottomBar
-                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                navigateWithHistory(
-                    ReaderReturnLocation.Main(
-                        range.start.itemIndex,
-                        charOffset = range.start.charOffset,
-                    ),
-                )
-            },
-            onRemoveQuote = { viewModel.removeQuote(it) },
-            bookmarked = bookmarked,
-            onToggleBookmark = {
-                haptics.performHapticFeedback(
-                    if (bookmarked) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn,
-                )
-                viewModel.toggleBookmarkAt(displayedIndex.intValue)
+            closeSignal = closeBottomPanelSignal,
+            onSettingsOpen = {
+                menuExpanded = false
+                selectedPanel = null
+                searchVisible = false
             },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
@@ -2462,6 +2558,9 @@ private fun ReaderTopBar(
     searchQuery: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    menuExpanded: Boolean,
+    onMenuExpandedChange: (Boolean) -> Unit,
+    onSectionSelected: (ReaderPanelSection) -> Unit,
     onBack: () -> Unit,
     onCloseSearch: () -> Unit,
     modifier: Modifier = Modifier,
@@ -2594,12 +2693,39 @@ private fun ReaderTopBar(
                                 )
                             }
                         }
-                        TonalBarButton(
-                            icon = Icons.Rounded.Search,
-                            contentDescription = stringResource(R.string.reader_search),
-                            colors = colors,
-                            onClick = onSearch,
-                        )
+                        Box {
+                            TonalBarButton(
+                                icon = Icons.AutoMirrored.Rounded.FormatListBulleted,
+                                contentDescription = stringResource(R.string.reader_contents),
+                                colors = colors,
+                                onClick = { onMenuExpandedChange(true) },
+                            )
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { onMenuExpandedChange(false) },
+                            ) {
+                                listOf(
+                                    ReaderPanelSection.CONTENTS to R.string.reader_contents,
+                                    ReaderPanelSection.BOOKMARKS to R.string.reader_bookmarks,
+                                    ReaderPanelSection.QUOTES to R.string.reader_quotes,
+                                ).forEach { (section, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(label)) },
+                                        onClick = {
+                                            onMenuExpandedChange(false)
+                                            onSectionSelected(section)
+                                        },
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.reader_search)) },
+                                    onClick = {
+                                        onMenuExpandedChange(false)
+                                        onSearch()
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -2635,8 +2761,6 @@ private fun splitChapterTitle(title: String): Pair<String, String?> {
 }
 
 
-private enum class BarPanel { SETTINGS, CONTENTS }
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReaderBottomBar(
@@ -2653,8 +2777,6 @@ private fun ReaderBottomBar(
     totalPages: Int?,
 
     progressValuesReady: Boolean,
-    ready: ReaderState.Ready,
-    book: Book?,
     currentChapter: Int,
     chapterLabel: String,
     chapterFraction: Float,
@@ -2671,14 +2793,8 @@ private fun ReaderBottomBar(
     onBrightnessChange: (Float?) -> Unit,
     translationSettings: TranslationSettings,
     onSaveTranslationSettings: (TranslationSettings) -> Unit,
-    onChapterClick: (ReaderNavigationTarget) -> Unit,
-    onBookmarkClick: (Bookmark) -> Unit,
-    onRemoveBookmark: (String) -> Unit,
-    onCopyQuote: (String) -> Unit,
-    onQuoteClick: (Quote) -> Unit,
-    onRemoveQuote: (String) -> Unit,
-    bookmarked: Boolean,
-    onToggleBookmark: () -> Unit,
+    closeSignal: Int,
+    onSettingsOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -2705,7 +2821,6 @@ private fun ReaderBottomBar(
     val panelMotion = remember(scope) { ReaderPanelMotion(scope) }
     val panelHeight = panelMotion.height
     val panelOpen = panelMotion.isOpen
-    var panelContent by remember { mutableStateOf(BarPanel.SETTINGS) }
     var selectedSettingsCategoryIndex by rememberSaveable { mutableIntStateOf(0) }
 
     fun settlePanel(targetPx: Float) = panelMotion.animateTo(targetPx)
@@ -2743,18 +2858,15 @@ private fun ReaderBottomBar(
     )
 
 
-    fun togglePanel(content: BarPanel) {
+    fun togglePanel() {
         haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-        when {
-            !panelMotion.isOpen -> {
-                panelContent = content
-                settlePanel(halfPx)
-            }
-
-            panelContent != content -> panelContent = content
-            else -> settlePanel(0f)
+        if (panelMotion.isOpen) settlePanel(0f) else {
+            onSettingsOpen()
+            settlePanel(halfPx)
         }
     }
+
+    LaunchedEffect(closeSignal) { if (closeSignal > 0) panelMotion.snapTo(0f) }
 
 
     LaunchedEffect(visible) {
@@ -2840,8 +2952,7 @@ private fun ReaderBottomBar(
                     val panelDp = with(density) { panelHeight.value.toDp() }
                     if (panelDp > 0.dp) {
                         Box(Modifier.height(panelDp)) {
-                            when (panelContent) {
-                                BarPanel.SETTINGS -> ReaderSettingsControls(
+                            ReaderSettingsControls(
                                     selectedCategoryIndex = selectedSettingsCategoryIndex,
                                     onCategorySelected = { selectedSettingsCategoryIndex = it },
                                     settings = settings,
@@ -2854,51 +2965,11 @@ private fun ReaderBottomBar(
                                     translationSettings = translationSettings,
                                     onSaveTranslationSettings = onSaveTranslationSettings,
                                 )
-
-                                BarPanel.CONTENTS -> ReaderPanelsContent(
-                                    colorScheme = appColorSchemeFor(appSettings.theme, appSettings.dynamicColor),
-                                    ready = ready,
-                                    book = book,
-                                    currentChapter = currentChapter,
-                                    chapterStartPages = chapterStartPages,
-                                    dragModifier = panelDrag,
-                                    onChapterClick = { index ->
-                                        settlePanel(0f)
-                                        onChapterClick(index)
-                                    },
-                                    onBookmarkClick = { bookmark ->
-                                        settlePanel(0f)
-                                        onBookmarkClick(bookmark)
-                                    },
-                                    onRemoveBookmark = onRemoveBookmark,
-                                    onCopyQuote = onCopyQuote,
-                                    onQuoteClick = { quote ->
-                                        settlePanel(0f)
-                                        onQuoteClick(quote)
-                                    },
-                                    onRemoveQuote = onRemoveQuote,
-                                    bookmarked = bookmarked,
-                                    onToggleBookmark = onToggleBookmark,
-                                )
-                            }
                         }
                     }
 
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        TonalBarButton(
-                            icon = Icons.AutoMirrored.Rounded.FormatListBulleted,
-                            contentDescription = stringResource(R.string.reader_contents),
-                            colors = colors,
-                            onClick = { togglePanel(BarPanel.CONTENTS) },
-                            tint = if (panelOpen && panelContent == BarPanel.CONTENTS) {
-                                colors.accent
-                            } else {
-                                colors.onChrome
-                            },
-                        )
-
-
                         val titleLines = remember(chapterLabel) { splitChapterTitle(chapterLabel) }
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -2936,8 +3007,8 @@ private fun ReaderBottomBar(
                             icon = Icons.Rounded.Settings,
                             contentDescription = stringResource(R.string.reader_settings),
                             colors = colors,
-                            onClick = { togglePanel(BarPanel.SETTINGS) },
-                            tint = if (panelOpen && panelContent == BarPanel.SETTINGS) {
+                            onClick = { togglePanel() },
+                            tint = if (panelOpen) {
                                 colors.accent
                             } else {
                                 colors.onChrome

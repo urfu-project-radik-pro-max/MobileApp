@@ -57,7 +57,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -124,7 +123,7 @@ fun ReaderPanelsContent(
     currentChapter: Int,
     chapterStartPages: List<Int>?,
 
-    dragModifier: Modifier = Modifier,
+    section: ReaderPanelSection,
     onChapterClick: (ReaderNavigationTarget) -> Unit,
     onBookmarkClick: (SavedBookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -135,51 +134,21 @@ fun ReaderPanelsContent(
     bookmarked: Boolean = false,
     onToggleBookmark: () -> Unit = {},
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-
-
     MaterialTheme(colorScheme = colorScheme) {
-        Column(Modifier.fillMaxSize()) {
-            PrimaryTabRow(
-                selectedTabIndex = tab,
-                containerColor = colorScheme.surfaceContainerLow,
-                contentColor = colorScheme.primary,
-                divider = {},
-                modifier = dragModifier.clip(RoundedCornerShape(16.dp)),
-            ) {
-                Tab(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    unselectedContentColor = colorScheme.onSurfaceVariant,
-                    text = { Text(stringResource(R.string.reader_contents)) },
+        Box(Modifier.fillMaxSize()) {
+            when (section) {
+                ReaderPanelSection.CONTENTS -> ContentsTab(ready, currentChapter, chapterStartPages, onChapterClick)
+                ReaderPanelSection.BOOKMARKS -> BookmarksTab(
+                    ready, book, bookmarked, onToggleBookmark,
+                    onBookmarkClick, onRemoveBookmark,
                 )
-                Tab(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    unselectedContentColor = colorScheme.onSurfaceVariant,
-                    text = { Text(stringResource(R.string.reader_bookmarks)) },
-                )
-                Tab(
-                    selected = tab == 2,
-                    onClick = { tab = 2 },
-                    unselectedContentColor = colorScheme.onSurfaceVariant,
-                    text = { Text(stringResource(R.string.reader_quotes)) },
-                )
-            }
-
-            Box(Modifier.weight(1f)) {
-                when (tab) {
-                    0 -> ContentsTab(ready, currentChapter, chapterStartPages, onChapterClick)
-                    1 -> BookmarksTab(
-                        ready, book, bookmarked, onToggleBookmark,
-                        onBookmarkClick, onRemoveBookmark,
-                    )
-                    else -> QuotesTab(ready, book, onCopyQuote, onQuoteClick, onRemoveQuote)
-                }
+                ReaderPanelSection.QUOTES -> QuotesTab(ready, book, onCopyQuote, onQuoteClick, onRemoveQuote)
             }
         }
     }
 }
+
+enum class ReaderPanelSection { CONTENTS, BOOKMARKS, QUOTES }
 @Composable
 private fun ContentsTab(
     ready: ReaderState.Ready,
@@ -211,6 +180,7 @@ private fun ContentsTab(
     LazyColumn(
         contentPadding = PaddingValues(8.dp),
         modifier = Modifier
+            .fillMaxSize()
             .padding(top = 8.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(scheme.surfaceContainerLow),
@@ -361,7 +331,10 @@ private fun BookmarkList(
     onBookmarkClick: (SavedBookmark) -> Unit,
     onRemoveBookmark: (String) -> Unit,
 ) {
-    LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
+    ) {
         items(bookmarks, key = { it.id }) { bookmark ->
             val anchor = ready.bookmarkAnchor(bookmark)
             val available = anchor != null
@@ -430,7 +403,10 @@ private fun QuotesTab(
         EmptyTabHint(stringResource(R.string.reader_quotes_empty))
         return
     }
-    LazyColumn(contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp),
+    ) {
         items(quotes, key = { it.id }) { quote ->
 
 

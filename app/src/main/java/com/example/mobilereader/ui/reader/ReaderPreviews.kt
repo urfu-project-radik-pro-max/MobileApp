@@ -41,6 +41,7 @@ private fun ReaderContentsPreview() {
             book = PreviewBooks.current,
             currentChapter = 0,
             chapterStartPages = listOf(0, 10),
+            section = ReaderPanelSection.CONTENTS,
             onChapterClick = {},
             onBookmarkClick = {},
             onRemoveBookmark = {},
