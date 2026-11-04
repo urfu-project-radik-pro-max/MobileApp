@@ -1,6 +1,8 @@
 package com.example.mobilereader.ui.reader
 
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import com.example.mobilereader.data.PageMargins
 import com.example.mobilereader.data.ReaderSettings
 import com.example.mobilereader.data.model.BookFont
 import org.junit.Assert.assertNotEquals
@@ -10,6 +12,33 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class PaginationSpecKeyTest {
+
+    @Test
+    fun `side margins change measured page width and cache key`() {
+        val density = Density(2f)
+        val margins = listOf(PageMargins.DP_6, PageMargins.DP_20, PageMargins.DP_40)
+        val widths = margins.map { margin ->
+            with(density) { ReaderMetrics.contentWidth(400.dp, margin).roundToPx() }
+        }
+        assertEquals(listOf(776, 720, 640), widths)
+        val keys = margins.mapIndexed { index, margin ->
+            PaginationSpec(
+                contentWidthPx = widths[index],
+                contentHeightPx = 1_200,
+                density = density,
+                settings = ReaderSettings(pageMargins = margin),
+                fontSize = 18f,
+            ).key
+        }
+        assertEquals(3, keys.toSet().size)
+    }
+
+    @Test
+    fun `touch positions select one of nine equal cells`() {
+        assertEquals(0, pageMarginStepAt(0f, 90f))
+        assertEquals(4, pageMarginStepAt(45f, 90f))
+        assertEquals(8, pageMarginStepAt(89f, 90f))
+    }
 
     @Test
     fun `reader font size changes the page format`() {

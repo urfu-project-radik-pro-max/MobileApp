@@ -64,9 +64,7 @@
     <string name="reader_edge_tap_paging">Turn pages by tapping the edges</string>
     <string name="reader_brightness_gesture">Adjust brightness from the left edge</string>
     <string name="reader_section_margins">Side margins</string>
-    <string name="reader_margins_narrow">Narrow</string>
-    <string name="reader_margins_normal">Normal</string>
-    <string name="reader_margins_wide">Wide</string>
+    <string name="reader_margin_dp">%1$d dp</string>
     <string name="reader_volume_keys">Turn pages with volume keys</string>
     <string name="theme_light">Light</string>
     <string name="theme_light_note">Soft ivory, sage green accents</string>

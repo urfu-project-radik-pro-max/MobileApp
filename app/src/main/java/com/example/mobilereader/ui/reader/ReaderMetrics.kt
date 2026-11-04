@@ -28,11 +28,10 @@ import com.example.mobilereader.ui.theme.fontFamilyFor
 object ReaderMetrics {
 
 
-    fun horizontalPadding(margins: PageMargins): Dp = when (margins) {
-        PageMargins.NARROW -> 10.dp
-        PageMargins.NORMAL -> 20.dp
-        PageMargins.WIDE -> 34.dp
-    }
+    fun horizontalPadding(margins: PageMargins): Dp = margins.dp.dp
+
+    fun contentWidth(viewportWidth: Dp, margins: PageMargins): Dp =
+        (viewportWidth - horizontalPadding(margins) * 2).coerceAtLeast(0.dp)
 
     val maxImageHeight = 520.dp
 

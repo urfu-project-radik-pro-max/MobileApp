@@ -48,7 +48,7 @@ class BookPage(
 )
 
 
-const val LAYOUT_ENGINE_VERSION = 15
+const val LAYOUT_ENGINE_VERSION = 16
 
 class PaginationSpec(
     val contentWidthPx: Int,
@@ -70,6 +70,7 @@ class PaginationSpec(
             "$fontSize | ${settings.lineHeight} | " +
             "density=${density.density.toBits()}/${density.fontScale.toBits()} | " +
             "${settings.font} | " +
+            "margins=${settings.pageMargins.name} | " +
             "centerHeadings=${settings.centerHeadings} | " +
             "${settings.startChaptersOnNewPage} | " +
             "lang=$language | " +

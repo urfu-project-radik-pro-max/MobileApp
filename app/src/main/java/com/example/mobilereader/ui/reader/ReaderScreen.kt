@@ -133,6 +133,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.ui.text.AnnotatedString
@@ -1328,8 +1329,7 @@ private fun NoteSheet(
             ) {
                 val returnRightPadding = WindowInsets.navigationBars.asPaddingValues()
                     .calculateRightPadding(LayoutDirection.Ltr) + 16.dp
-                val contentWidth = maxWidth -
-                    ReaderMetrics.horizontalPadding(settings.pageMargins) * 2
+                val contentWidth = ReaderMetrics.contentWidth(maxWidth, settings.pageMargins)
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxWidth(),
@@ -1431,7 +1431,7 @@ private fun LinkedDocumentOverlay(
             .background(colors.background),
     ) {
         val returnRightPadding = stableInsets.calculateRightPadding(LayoutDirection.Ltr) + 16.dp
-        val contentWidth = maxWidth - ReaderMetrics.horizontalPadding(settings.pageMargins) * 2
+        val contentWidth = ReaderMetrics.contentWidth(maxWidth, settings.pageMargins)
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -1648,7 +1648,7 @@ private fun PagedReader(
         val bottomPadding = stableInsets.calculateBottomPadding() + 40.dp
 
         val contentWidthPx = with(density) {
-            (maxWidth - ReaderMetrics.horizontalPadding(settings.pageMargins) * 2).roundToPx()
+            ReaderMetrics.contentWidth(maxWidth, settings.pageMargins).roundToPx()
         }
         val contentHeightPx = with(density) {
             (maxHeight - topPadding - bottomPadding).roundToPx()
@@ -1766,6 +1766,7 @@ private fun PagedReader(
                 }.collect { livePagePosition.value = it }
             }
             LaunchedEffect(pagerState) {
+                var firstSettle = true
                 snapshotFlow { pagerState.settledPage }.collect { settled ->
                     if (settled >= realPageCount) {
 
@@ -1779,13 +1780,21 @@ private fun PagedReader(
 
                         val flat = pages[settled].firstItemIndex
                         displayedIndex.intValue = flat
-                        viewModel.saveProgress(flat, pages[settled].firstCharOffset)
+                        val preserveAnchor = ReaderNavigationPolicy.preservePositionOnSettle(
+                            firstSettle, settled, initialPage,
+                        )
+                        firstSettle = false
+                        if (!preserveAnchor) viewModel.saveProgress(flat, pages[settled].firstCharOffset)
                         return@collect
                     }
                     val flatIndex = pages[settled].firstItemIndex
                     displayedIndex.intValue = flatIndex
                     pagePosition.value = settled to realPageCount
-                    viewModel.saveProgress(flatIndex, pages[settled].firstCharOffset)
+                    val preserveAnchor = ReaderNavigationPolicy.preservePositionOnSettle(
+                        firstSettle, settled, initialPage,
+                    )
+                    firstSettle = false
+                    if (!preserveAnchor) viewModel.saveProgress(flatIndex, pages[settled].firstCharOffset)
                 }
             }
 
@@ -1945,8 +1954,7 @@ private fun PagedReader(
                         colors = colors,
                         topPadding = topPadding,
                         bottomPadding = bottomPadding,
-                        contentWidth = maxWidth -
-                            ReaderMetrics.horizontalPadding(renderSettings.pageMargins) * 2,
+                        contentWidth = ReaderMetrics.contentWidth(maxWidth, renderSettings.pageMargins),
                         bookFonts = ready.bookFonts,
                         language = ready.language,
                         bookId = ready.book.id,
@@ -3021,6 +3029,8 @@ private fun ReaderBottomBar(
                     Spacer(Modifier.height(6.dp))
                     ProgressRow(
                         label = stringResource(R.string.reader_track_book).uppercase(),
+                        labelWidth = 48.dp,
+                        valueWidth = 60.dp,
                         fraction = bookFraction,
                         onSeek = onSeekBook,
                         colors = colors,
@@ -3041,6 +3051,8 @@ private fun ReaderBottomBar(
 @Composable
 private fun ProgressRow(
     label: String,
+    labelWidth: Dp = 72.dp,
+    valueWidth: Dp = 84.dp,
     fraction: Float,
 
     onSeek: (Float) -> Boolean,
@@ -3076,7 +3088,7 @@ private fun ProgressRow(
             color = colors.secondaryText,
             letterSpacing = 1.2.sp,
             maxLines = 1,
-            modifier = Modifier.width(72.dp),
+            modifier = Modifier.width(labelWidth),
         )
         Box(
             modifier = Modifier
@@ -3208,8 +3220,13 @@ private fun ProgressRow(
             },
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
+                stepSize = 0.5.sp,
+            ),
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
-            modifier = Modifier.width(84.dp),
+            modifier = Modifier.width(valueWidth),
         )
     }
 }

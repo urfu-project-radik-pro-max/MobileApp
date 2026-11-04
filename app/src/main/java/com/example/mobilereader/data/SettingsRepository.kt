@@ -38,7 +38,17 @@ object ReaderFontSerializer : KSerializer<ReaderFont> {
 }
 
 @kotlinx.serialization.Serializable
-enum class PageMargins { NARROW, NORMAL, WIDE }
+enum class PageMargins(val dp: Int) {
+    DP_6(6),
+    DP_10(10),
+    DP_14(14),
+    DP_17(17),
+    DP_20(20),
+    DP_24(24),
+    DP_28(28),
+    DP_34(34),
+    DP_40(40),
+}
 
 
 @kotlinx.serialization.Serializable
@@ -59,7 +69,7 @@ data class ReaderSettings(
     val lineHeight: Float = 1.5f,
     val font: ReaderFont = ReaderFont.LITERATA,
 
-    val pageMargins: PageMargins = PageMargins.NORMAL,
+    val pageMargins: PageMargins = PageMargins.DP_20,
 
     val startChaptersOnNewPage: Boolean = true,
 
@@ -105,6 +115,18 @@ data class TranslationSettings(
 
 private val Context.settingsDataStore by preferencesDataStore(name = "reader_settings")
 
+internal object PageMarginsSettingsStore {
+    private val key = stringPreferencesKey("page_margins")
+
+    fun read(preferences: Preferences): PageMargins =
+        preferences[key]?.let { name -> PageMargins.entries.firstOrNull { it.name == name } }
+            ?: PageMargins.DP_20
+
+    fun write(preferences: MutablePreferences, margins: PageMargins) {
+        preferences[key] = margins.name
+    }
+}
+
 internal object ReaderGestureSettingsStore {
     private val edgeTapPagingEnabled = booleanPreferencesKey("edge_tap_paging_enabled")
     private val brightnessGestureEnabled = booleanPreferencesKey("brightness_gesture_enabled")
@@ -129,7 +151,6 @@ class SettingsRepository(private val context: Context) {
         val fontSize = floatPreferencesKey("font_size_sp")
         val lineHeight = floatPreferencesKey("line_height")
         val font = stringPreferencesKey("font")
-        val pageMargins = stringPreferencesKey("page_margins")
         val chapterNewPage = booleanPreferencesKey("chapter_new_page")
         val chapterPagesLeft = booleanPreferencesKey("chapter_pages_left")
         val invertImages = booleanPreferencesKey("invert_images")
@@ -208,7 +229,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.fontSize] = updated.fontSizeSp
             prefs[Keys.lineHeight] = updated.lineHeight
             prefs[Keys.font] = updated.font.name
-            prefs[Keys.pageMargins] = updated.pageMargins.name
+            PageMarginsSettingsStore.write(prefs, updated.pageMargins)
             prefs[Keys.chapterNewPage] = updated.startChaptersOnNewPage
             prefs[Keys.chapterPagesLeft] = updated.showChapterPagesLeft
             prefs[Keys.invertImages] = updated.invertImages
@@ -240,7 +261,7 @@ class SettingsRepository(private val context: Context) {
             fontSizeSp = this[Keys.fontSize] ?: defaults.fontSizeSp,
             lineHeight = this[Keys.lineHeight] ?: defaults.lineHeight,
             font = enumOrDefault(this[Keys.font], defaults.font),
-            pageMargins = enumOrDefault(this[Keys.pageMargins], defaults.pageMargins),
+            pageMargins = PageMarginsSettingsStore.read(this),
             startChaptersOnNewPage = this[Keys.chapterNewPage] ?: defaults.startChaptersOnNewPage,
             showChapterPagesLeft = this[Keys.chapterPagesLeft] ?: defaults.showChapterPagesLeft,
             invertImages = this[Keys.invertImages] ?: defaults.invertImages,

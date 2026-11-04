@@ -43,6 +43,11 @@ class ReaderNavigationPolicyTest {
 
         assertEquals(1, ReaderNavigationPolicy.pageIndexForLocation(before, origin))
         assertEquals(2, ReaderNavigationPolicy.pageIndexForLocation(after, origin))
+        assertTrue(ReaderNavigationPolicy.preservePositionOnSettle(true, 2, 2))
+        assertFalse(ReaderNavigationPolicy.preservePositionOnSettle(false, 2, 2))
+        assertFalse(ReaderNavigationPolicy.preservePositionOnSettle(true, 3, 2))
+        assertEquals(150, after[2].firstCharOffset)
+        assertEquals(180, origin.charOffset)
         assertNull(ReaderNavigationPolicy.pageIndexForLocation(emptyList(), origin))
     }
 

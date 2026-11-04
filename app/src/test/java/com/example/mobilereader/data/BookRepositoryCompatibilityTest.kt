@@ -21,7 +21,7 @@ class BookRepositoryCompatibilityTest {
                         "fontSizeSp": 27.0,
                         "font": "CUSTOM",
                         "customFontPath": "/stored/user-font.ttf",
-                        "pageMargins": "WIDE",
+                        "pageMargins": "DP_34",
                         "justify": false,
                         "hyphenation": false,
                         "hideFootnotes": true
@@ -38,7 +38,7 @@ class BookRepositoryCompatibilityTest {
         assertNotNull(settings)
         assertEquals(27f, settings!!.fontSizeSp)
         assertEquals(ReaderFont.LITERATA, settings.font)
-        assertEquals(PageMargins.WIDE, settings.pageMargins)
+        assertEquals(PageMargins.DP_34, settings.pageMargins)
         val rewrittenBooks = bookRepositoryJson.encodeToString(books)
         assertFalse(rewrittenBooks.contains("\"CUSTOM\""))
         assertFalse(rewrittenBooks.contains("customFontPath"))

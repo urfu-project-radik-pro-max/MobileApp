@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -95,6 +96,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -917,21 +924,10 @@ private fun ReaderSettingsCategoryContent(
                 Spacer(Modifier.height(18.dp))
 
 
-                PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
-                val marginOptions = PageMargins.entries
-                ChipRow(
-                    options = listOf(
-                        stringResource(R.string.reader_margins_narrow),
-                        stringResource(R.string.reader_margins_normal),
-                        stringResource(R.string.reader_margins_wide),
-                    ),
-                    selectedIndex = marginOptions.indexOf(settings.pageMargins),
+                MarginStepControl(
+                    selected = settings.pageMargins,
                     colors = colors,
-                    onSelect = { index ->
-                        onUpdate { current ->
-                            current.copy(pageMargins = marginOptions[index])
-                        }
-                    },
+                    onSelect = { margins -> onUpdate { it.copy(pageMargins = margins) } },
                 )
 
                 Spacer(Modifier.height(18.dp))
@@ -1092,6 +1088,95 @@ private fun StepperGroup(
     }
 }
 
+
+internal fun pageMarginStepAt(x: Float, width: Float): Int =
+    if (width <= 0f) 0 else ((x / width) * PageMargins.entries.size).toInt()
+        .coerceIn(0, PageMargins.entries.lastIndex)
+
+@Composable
+private fun MarginStepControl(
+    selected: PageMargins,
+    colors: ReaderColors,
+    onSelect: (PageMargins) -> Unit,
+) {
+    val options = PageMargins.entries
+    val selectedIndex = options.indexOf(selected)
+    val label = stringResource(R.string.reader_section_margins)
+    val value = stringResource(R.string.reader_margin_dp, selected.dp)
+    val currentOnSelect = rememberUpdatedState(onSelect)
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.secondaryText,
+            letterSpacing = 1.2.sp,
+            modifier = Modifier.weight(1f).padding(bottom = 10.dp),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onChrome,
+            modifier = Modifier.padding(bottom = 10.dp),
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.onChrome.copy(alpha = 0.08f))
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    currentOnSelect.value(options[pageMarginStepAt(offset.x, size.width.toFloat())])
+                }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, _ ->
+                    currentOnSelect.value(options[pageMarginStepAt(change.position.x, size.width.toFloat())])
+                    change.consume()
+                }
+            }
+            .clearAndSetSemantics {
+                contentDescription = label
+                stateDescription = value
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    selectedIndex.toFloat(), 0f..options.lastIndex.toFloat(), options.size - 2,
+                )
+                setProgress { requested ->
+                    onSelect(options[requested.roundToInt().coerceIn(0, options.lastIndex)])
+                    true
+                }
+            }
+            .padding(4.dp),
+    ) {
+        options.forEachIndexed { index, _ ->
+            val current = index == selectedIndex
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(horizontal = 1.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(when {
+                        current -> colors.accent
+                        index < selectedIndex -> colors.accent.copy(alpha = 0.55f)
+                        else -> colors.onChrome.copy(alpha = 0.06f)
+                    })
+                    .border(
+                        width = if (current) 2.dp else 0.dp,
+                        color = if (current) colors.onChrome else Color.Transparent,
+                        shape = RoundedCornerShape(8.dp),
+                    ),
+            ) {
+                if (current) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(colors.chrome))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ChipRow(

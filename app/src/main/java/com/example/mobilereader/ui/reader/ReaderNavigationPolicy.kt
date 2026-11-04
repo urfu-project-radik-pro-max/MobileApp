@@ -6,6 +6,9 @@ import kotlin.math.roundToInt
 
 internal object ReaderNavigationPolicy {
 
+    fun preservePositionOnSettle(firstSettle: Boolean, settledPage: Int, initialPage: Int): Boolean =
+        firstSettle && settledPage == initialPage
+
 
     fun pageIndexForLocation(pages: List<BookPage>, location: ReaderReturnLocation.Main): Int? {
         if (pages.isEmpty()) return null
