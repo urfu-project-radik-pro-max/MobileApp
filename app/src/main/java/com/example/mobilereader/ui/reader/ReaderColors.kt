@@ -43,7 +43,6 @@ fun readerColors(
         ),
         idiomHighlight = when (theme) {
             AppTheme.WHITE -> FixedWhiteColors.idiomHighlight
-            AppTheme.SEPIA -> pageScheme.primaryContainer
             AppTheme.OLED -> pageScheme.primary.copy(alpha = 0.18f)
         },
     )

@@ -42,7 +42,7 @@ enum class PageMargins { NARROW, NORMAL, WIDE }
 
 
 @kotlinx.serialization.Serializable
-enum class AppTheme { WHITE, SEPIA, OLED }
+enum class AppTheme { WHITE, OLED }
 
 
 @kotlinx.serialization.Serializable

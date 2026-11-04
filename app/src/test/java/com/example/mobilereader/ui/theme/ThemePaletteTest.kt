@@ -123,16 +123,6 @@ class ThemePaletteTest {
     }
 
     @Test
-    fun `Beige always ignores the dynamic palette`() {
-        val beige = colorSchemeFor(AppTheme.SEPIA)
-        val resolved = resolveAppColorScheme(AppTheme.SEPIA, systemBlueScheme)
-
-        assertSame(beige, resolved)
-        assertEquals(beige.background, resolved.background)
-        assertEquals(beige.primary, resolved.primary)
-    }
-
-    @Test
     fun `mobileReader specific surfaces follow the dynamic palette`() {
         val colors = dynamicMobileReaderColors(systemBlueScheme, dark = false)
 
@@ -158,13 +148,4 @@ class ThemePaletteTest {
         assertNotEquals(colors.idiomHighlight, colors.selection)
     }
 
-    @Test
-    fun `Beige reader chrome stays Beige when Material You is enabled`() {
-        val beige = resolveAppColorScheme(AppTheme.SEPIA, systemBlueScheme)
-        val colors = readerColors(AppTheme.SEPIA, chromeScheme = beige)
-
-        assertEquals(beige.surface, colors.background)
-        assertEquals(beige.surfaceContainerHigh, colors.chrome)
-        assertEquals(beige.primary, colors.accent)
-    }
 }

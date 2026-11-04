@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -160,6 +161,128 @@ fun ReaderSearchOverlay(
         onClose()
     }
 
+    ReaderFullScreenOverlay(visible, colors, topPadding, modifier) {
+        val trimmed = query.trim()
+
+
+        val matchPages = remember(results, pages) {
+            val matches = results?.matches
+            if (matches == null || pages.isNullOrEmpty()) {
+                null
+            } else {
+                var page = 0
+                matches.map { match ->
+                    while (
+                        page + 1 < pages.size &&
+                        (
+                            pages[page + 1].firstItemIndex < match.itemIndex ||
+                                (
+                                    pages[page + 1].firstItemIndex == match.itemIndex &&
+                                        pages[page + 1].firstCharOffset <= match.charStart
+                                    )
+                            )
+                    ) {
+                        page++
+                    }
+                    page
+                }
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        ) {
+
+            val pageQuery = trimmed.takeIf { it.isNotEmpty() && it.all { c -> c.isDigit() } }
+                ?.toIntOrNull()
+            if (pageQuery != null && pages != null) {
+                item(key = "page-jump") {
+                    GoToPageCard(
+                        pageQuery = pageQuery,
+                        totalPages = pages.size,
+                        colors = colors,
+                        onGoToPage = {
+                            keyboard?.hide()
+                            onGoToPage(it)
+                        },
+                    )
+                }
+            }
+
+            val current = results
+            when {
+                current != null && current.query == trimmed && current.matches.isEmpty() -> {
+                    if (pageQuery == null) {
+                        item(key = "empty") {
+                            SearchHint(
+                                text = stringResource(R.string.reader_search_empty, trimmed),
+                                colors = colors,
+                            )
+                        }
+                    }
+                }
+
+                current != null -> {
+                    item(key = "count") {
+                        val count = if (current.totalCount == 1) {
+                            stringResource(R.string.reader_search_one_match)
+                        } else {
+                            stringResource(R.string.reader_search_matches, current.totalCount)
+                        }
+                        val label = if (current.truncated) {
+                            "$count · " + stringResource(
+                                R.string.reader_search_truncated,
+                                current.matches.size,
+                            )
+                        } else {
+                            count
+                        }
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.secondaryText,
+                            modifier = Modifier.padding(start = 8.dp, top = 10.dp, bottom = 6.dp),
+                        )
+                    }
+                    itemsIndexed(current.matches) { index, match ->
+                        SearchResultRow(
+                            match = match,
+                            chapterTitle = chapterTitles.getOrNull(match.chapterIndex),
+                            page = matchPages?.getOrNull(index),
+                            colors = colors,
+                            onClick = {
+                                keyboard?.hide()
+                                onResultClick(match)
+                            },
+                        )
+                    }
+                }
+
+                trimmed.length < 2 && pageQuery == null -> {
+                    item(key = "idle") {
+                        SearchHint(
+                            text = stringResource(R.string.reader_search_hint),
+                            colors = colors,
+                            showIcon = true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ReaderFullScreenOverlay(
+    visible: Boolean,
+    colors: ReaderColors,
+    topPadding: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
@@ -170,125 +293,13 @@ fun ReaderSearchOverlay(
             modifier = Modifier
                 .fillMaxSize()
                 .background(colors.background)
-
-
                 .pointerInput(Unit) { detectTapGestures { } }
                 .pointerInput(Unit) {
                     detectDragGestures(onDrag = { change, _ -> change.consume() })
                 }
                 .padding(top = topPadding),
-        ) {
-            val trimmed = query.trim()
-
-
-            val matchPages = remember(results, pages) {
-                val matches = results?.matches
-                if (matches == null || pages.isNullOrEmpty()) {
-                    null
-                } else {
-                    var page = 0
-                    matches.map { match ->
-                        while (
-                            page + 1 < pages.size &&
-                            (
-                                pages[page + 1].firstItemIndex < match.itemIndex ||
-                                    (
-                                        pages[page + 1].firstItemIndex == match.itemIndex &&
-                                            pages[page + 1].firstCharOffset <= match.charStart
-                                        )
-                                )
-                        ) {
-                            page++
-                        }
-                        page
-                    }
-                }
-            }
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .imePadding(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-            ) {
-
-                val pageQuery = trimmed.takeIf { it.isNotEmpty() && it.all { c -> c.isDigit() } }
-                    ?.toIntOrNull()
-                if (pageQuery != null && pages != null) {
-                    item(key = "page-jump") {
-                        GoToPageCard(
-                            pageQuery = pageQuery,
-                            totalPages = pages.size,
-                            colors = colors,
-                            onGoToPage = {
-                                keyboard?.hide()
-                                onGoToPage(it)
-                            },
-                        )
-                    }
-                }
-
-                val current = results
-                when {
-                    current != null && current.query == trimmed && current.matches.isEmpty() -> {
-                        if (pageQuery == null) {
-                            item(key = "empty") {
-                                SearchHint(
-                                    text = stringResource(R.string.reader_search_empty, trimmed),
-                                    colors = colors,
-                                )
-                            }
-                        }
-                    }
-
-                    current != null -> {
-                        item(key = "count") {
-                            val count = if (current.totalCount == 1) {
-                                stringResource(R.string.reader_search_one_match)
-                            } else {
-                                stringResource(R.string.reader_search_matches, current.totalCount)
-                            }
-                            val label = if (current.truncated) {
-                                "$count · " + stringResource(
-                                    R.string.reader_search_truncated,
-                                    current.matches.size,
-                                )
-                            } else {
-                                count
-                            }
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = colors.secondaryText,
-                                modifier = Modifier.padding(start = 8.dp, top = 10.dp, bottom = 6.dp),
-                            )
-                        }
-                        itemsIndexed(current.matches) { index, match ->
-                            SearchResultRow(
-                                match = match,
-                                chapterTitle = chapterTitles.getOrNull(match.chapterIndex),
-                                page = matchPages?.getOrNull(index),
-                                colors = colors,
-                                onClick = {
-                                    keyboard?.hide()
-                                    onResultClick(match)
-                                },
-                            )
-                        }
-                    }
-
-                    trimmed.length < 2 && pageQuery == null -> {
-                        item(key = "idle") {
-                            SearchHint(
-                                text = stringResource(R.string.reader_search_hint),
-                                colors = colors,
-                                showIcon = true,
-                            )
-                        }
-                    }
-                }
-            }
-        }
+            content = content,
+        )
     }
 }
 

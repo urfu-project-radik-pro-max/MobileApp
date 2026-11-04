@@ -70,8 +70,6 @@
     <string name="reader_volume_keys">Turn pages with volume keys</string>
     <string name="theme_light">Light</string>
     <string name="theme_light_note">Soft ivory, sage green accents</string>
-    <string name="theme_beige">Warm</string>
-    <string name="theme_beige_note">Warm paper, umber accents</string>
     <string name="theme_midnight">Dark</string>
     <string name="theme_midnight_note">True black, mint green accents</string>
     <string name="settings_keep_screen_on">Keep screen on</string>

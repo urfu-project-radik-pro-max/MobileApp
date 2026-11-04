@@ -95,7 +95,6 @@ fun appColorSchemeFor(theme: AppTheme, dynamicColor: Boolean): ColorScheme {
     return remember(theme, dynamicColor, context, configuration) {
         val dynamicScheme = if (
             dynamicColor &&
-            theme != AppTheme.SEPIA &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         ) {
             if (theme.isDark()) {
@@ -113,11 +112,7 @@ fun appColorSchemeFor(theme: AppTheme, dynamicColor: Boolean): ColorScheme {
 internal fun resolveAppColorScheme(
     theme: AppTheme,
     dynamicScheme: ColorScheme?,
-): ColorScheme = if (theme == AppTheme.SEPIA) {
-    colorSchemeFor(theme)
-} else {
-    dynamicScheme ?: colorSchemeFor(theme)
-}
+): ColorScheme = dynamicScheme ?: colorSchemeFor(theme)
 
 
 fun AppTheme.isDark(): Boolean = this == AppTheme.OLED
@@ -125,7 +120,6 @@ fun AppTheme.isDark(): Boolean = this == AppTheme.OLED
 
 fun colorSchemeFor(theme: AppTheme): ColorScheme = when (theme) {
     AppTheme.WHITE -> LightColorScheme
-    AppTheme.SEPIA -> BeigeColorScheme
     AppTheme.OLED -> MidnightColorScheme
 }
 
@@ -133,14 +127,12 @@ fun colorSchemeFor(theme: AppTheme): ColorScheme = when (theme) {
 val AppTheme.displayNameRes: Int
     get() = when (this) {
         AppTheme.WHITE -> com.example.mobilereader.R.string.theme_light
-        AppTheme.SEPIA -> com.example.mobilereader.R.string.theme_beige
         AppTheme.OLED -> com.example.mobilereader.R.string.theme_midnight
     }
 
 val AppTheme.descriptionRes: Int
     get() = when (this) {
         AppTheme.WHITE -> com.example.mobilereader.R.string.theme_light_note
-        AppTheme.SEPIA -> com.example.mobilereader.R.string.theme_beige_note
         AppTheme.OLED -> com.example.mobilereader.R.string.theme_midnight_note
     }
 
@@ -148,7 +140,6 @@ val AppTheme.descriptionRes: Int
 val AppTheme.swatch: Pair<Color, Color>
     get() = when (this) {
         AppTheme.WHITE -> FixedWhiteColors.background to FixedWhiteColors.primary
-        AppTheme.SEPIA -> Color(0xFFF3E7D2) to Color(0xFF7E5326)
         AppTheme.OLED -> Color(0xFF000000) to Color(0xFF7BD69B)
     }
 
@@ -192,20 +183,6 @@ private val LightExtraColors = MobileReaderExtraColors(
     ink2 = lightSecondaryText,
 )
 
-private val BeigeExtraColors = MobileReaderExtraColors(
-    headerTop = Color(0xFFE7D3AC),
-    headerBottom = Color(0xFFF1E4CC),
-    glass = Color.White.copy(alpha = 0.50f),
-    chip = Color(0xFFEBDFC4),
-    pill = Color(0xFFFBF4E6).copy(alpha = 0.94f),
-    pill60 = Color(0xFFFBF4E6).copy(alpha = 0.60f),
-    lift = Color(0xFFFBF4E6).copy(alpha = 0.82f),
-    nav = Color(0xFFE9DBC0),
-    folder = Color(0xFFBEA06E).copy(alpha = 0.40f),
-    ink = Color(0xFF2E2416),
-    ink2 = Color(0xFF4C3E29),
-)
-
 private val MidnightExtraColors = MobileReaderExtraColors(
     headerTop = Color(0xFF131A14),
     headerBottom = Color(0xFF000000),
@@ -224,7 +201,6 @@ val LocalMobileReaderColors = staticCompositionLocalOf { LightExtraColors }
 
 private fun fixedMobileReaderColors(theme: AppTheme): MobileReaderExtraColors = when (theme) {
     AppTheme.WHITE -> LightExtraColors
-    AppTheme.SEPIA -> BeigeExtraColors
     AppTheme.OLED -> MidnightExtraColors
 }
 
@@ -235,7 +211,6 @@ internal fun mobileReaderColorsFor(
     dynamicColor: Boolean,
 ): MobileReaderExtraColors = if (
     dynamicColor &&
-    theme != AppTheme.SEPIA &&
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 ) {
     dynamicMobileReaderColors(scheme, dark = theme.isDark())
@@ -305,45 +280,6 @@ private val LightColorScheme: ColorScheme = lightColorScheme(
     surfaceContainerHighest = lightSurfaceContainerHighest,
 )
 
-
-private val BeigeColorScheme: ColorScheme = lightColorScheme(
-    primary = Color(0xFF7E5326),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFE9D6B2),
-    onPrimaryContainer = Color(0xFF3E2E1A),
-    inversePrimary = Color(0xFFE0BC8C),
-    secondary = Color(0xFF6E5C42),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFEFE0C4),
-    onSecondaryContainer = Color(0xFF2A2013),
-    tertiary = Color(0xFF5A5A33),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFE2E2B6),
-    onTertiaryContainer = Color(0xFF1B1B00),
-    background = Color(0xFFF3E7D2),
-    onBackground = Color(0xFF3B2F1E),
-    surface = Color(0xFFF3E7D2),
-    onSurface = Color(0xFF3B2F1E),
-    surfaceVariant = Color(0xFFE5D6B8),
-    onSurfaceVariant = Color(0xFF7C6B51),
-    surfaceTint = Color(0xFF7E5326),
-    inverseSurface = Color(0xFF38301F),
-    inverseOnSurface = Color(0xFFF7EEDC),
-    error = Color(0xFF9A3B2C),
-    onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD3),
-    onErrorContainer = Color(0xFF3A0A02),
-    outline = Color(0xFF8E7A5C),
-    outlineVariant = Color(0xFFCDB894),
-    scrim = Color(0xFF000000),
-    surfaceBright = Color(0xFFFBF4E6),
-    surfaceDim = Color(0xFFDCCFB5),
-    surfaceContainerLowest = Color(0xFFFBF4E6),
-    surfaceContainerLow = Color(0xFFF5EBD7),
-    surfaceContainer = Color(0xFFF7EEDC),
-    surfaceContainerHigh = Color(0xFFE9DBC0),
-    surfaceContainerHighest = Color(0xFFE3D3B6),
-)
 
 
 private val MidnightColorScheme: ColorScheme = darkColorScheme(

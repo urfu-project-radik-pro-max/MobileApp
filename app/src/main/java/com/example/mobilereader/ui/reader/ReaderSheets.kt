@@ -720,7 +720,6 @@ private fun ReaderSettingsCategoryContent(
 
                     options = listOf(
                         stringResource(R.string.theme_light),
-                        stringResource(R.string.theme_beige),
                         stringResource(R.string.theme_midnight),
                     ),
                     selectedIndex = themes.indexOf(appSettings.theme),
@@ -918,6 +917,24 @@ private fun ReaderSettingsCategoryContent(
                 Spacer(Modifier.height(18.dp))
 
 
+                PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
+                val marginOptions = PageMargins.entries
+                ChipRow(
+                    options = listOf(
+                        stringResource(R.string.reader_margins_narrow),
+                        stringResource(R.string.reader_margins_normal),
+                        stringResource(R.string.reader_margins_wide),
+                    ),
+                    selectedIndex = marginOptions.indexOf(settings.pageMargins),
+                    colors = colors,
+                    onSelect = { index ->
+                        onUpdate { current ->
+                            current.copy(pageMargins = marginOptions[index])
+                        }
+                    },
+                )
+
+                Spacer(Modifier.height(18.dp))
                 PanelSectionLabel(stringResource(R.string.reader_font), colors)
                 ChipRow(
                     options = listOf(
@@ -943,25 +960,6 @@ private fun ReaderSettingsCategoryContent(
             }
             ReaderSettingsCategory.PAGES -> {
                 Spacer(Modifier.height(18.dp))
-
-                PanelSectionLabel(stringResource(R.string.reader_section_margins), colors)
-                val marginOptions = PageMargins.entries
-                ChipRow(
-                    options = listOf(
-                        stringResource(R.string.reader_margins_narrow),
-                        stringResource(R.string.reader_margins_normal),
-                        stringResource(R.string.reader_margins_wide),
-                    ),
-                    selectedIndex = marginOptions.indexOf(settings.pageMargins),
-                    colors = colors,
-                    onSelect = { index ->
-                        onUpdate { current ->
-                            current.copy(pageMargins = marginOptions[index])
-                        }
-                    },
-                )
-
-                Spacer(Modifier.height(20.dp))
                 SettingsGroup(colors) {
                     SettingToggleRow(
                         icon = Icons.AutoMirrored.Rounded.MenuBook,
