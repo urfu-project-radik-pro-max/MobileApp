@@ -1,5 +1,24 @@
 <resources>
     <string name="app_name">MobileReader</string>
+    <string name="library_title">My library</string>
+    <string name="library_search_placeholder">Search books</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_reading">Reading</string>
+    <string name="library_filter_finished">Finished</string>
+    <string name="library_add_book">Add book</string>
+    <string name="library_adding_book">Adding book…</string>
+    <string name="library_book_alice">Alice\'s Adventures in Wonderland</string>
+    <string name="library_author_carroll">Lewis Carroll</string>
+    <string name="library_book_dracula">Dracula</string>
+    <string name="library_author_stoker">Bram Stoker</string>
+    <string name="library_book_little_women">Little Women</string>
+    <string name="library_author_alcott">Louisa May Alcott</string>
+    <string name="library_book_oz">The Wonderful Wizard of Oz</string>
+    <string name="library_author_baum">L. Frank Baum</string>
+    <string name="library_book_sherlock">The Adventures of Sherlock Holmes</string>
+    <string name="library_author_doyle">Arthur Conan Doyle</string>
+    <string name="library_book_time_machine">The Time Machine</string>
+    <string name="library_author_wells">H. G. Wells</string>
     <string name="reader_error_title">Couldn\'t open this book</string>
     <string name="reader_error_message">The file may be damaged or missing.</string>
     <string name="reader_back">Back</string>
@@ -69,6 +88,7 @@
     <string name="theme_light">Light</string>
     <string name="theme_light_note">Soft ivory, sage green accents</string>
     <string name="theme_midnight">Dark</string>
+    <string name="reader_enable_dark_theme">Enable Dark theme</string>
     <string name="theme_midnight_note">True black, mint green accents</string>
     <string name="settings_keep_screen_on">Keep screen on</string>
     <string name="reader_chapter_new_page">Chapters start on a new page</string>

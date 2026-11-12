@@ -5,6 +5,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DensityLarge
 import androidx.compose.material.icons.rounded.DensitySmall
 import androidx.compose.material.icons.rounded.Lightbulb
@@ -102,6 +104,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -721,31 +724,6 @@ private fun ReaderSettingsCategoryContent(
             ReaderSettingsCategory.APPEARANCE -> {
                 Spacer(Modifier.height(8.dp))
 
-                val themes = AppTheme.entries
-                ChipRow(
-
-
-                    options = listOf(
-                        stringResource(R.string.theme_light),
-                        stringResource(R.string.theme_midnight),
-                    ),
-                    selectedIndex = themes.indexOf(appSettings.theme),
-                    colors = colors,
-                    onSelect = { index -> onUpdateApp { it.copy(theme = themes[index]) } },
-                    leading = { index ->
-                        Box(
-                            Modifier
-                                .size(18.dp)
-                                .clip(CircleShape)
-                                .background(readerColors(themes[index]).background)
-                                .border(1.dp, colors.onChrome.copy(alpha = 0.25f), CircleShape),
-                        )
-                    },
-                )
-
-                Spacer(Modifier.height(20.dp))
-
-
                 val autoBrightness = brightness == null
                 fun readSystemBrightness(): Float = runCatching {
                     android.provider.Settings.System.getInt(
@@ -832,7 +810,52 @@ private fun ReaderSettingsCategoryContent(
                         )
                     }
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(12.dp))
+
+                SettingsGroup(colors) {
+                    val darkThemeEnabled = appSettings.theme == AppTheme.OLED
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 64.dp)
+                            .toggleable(
+                                value = darkThemeEnabled,
+                                role = Role.Switch,
+                                onValueChange = { enabled ->
+                                    haptics.performHapticFeedback(
+                                        if (enabled) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff,
+                                    )
+                                    onUpdateApp {
+                                        it.copy(theme = if (enabled) AppTheme.OLED else AppTheme.WHITE)
+                                    }
+                                },
+                            )
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.DarkMode,
+                            contentDescription = null,
+                            tint = colors.onChrome,
+                            modifier = Modifier.size(22.dp),
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            stringResource(R.string.reader_enable_dark_theme),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.onChrome,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = darkThemeEnabled,
+                            onCheckedChange = null,
+                            modifier = Modifier.clearAndSetSemantics {},
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
 
                 SettingsGroup(colors) {
                     SettingToggleRow(

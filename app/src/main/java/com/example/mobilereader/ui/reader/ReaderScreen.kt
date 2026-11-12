@@ -149,6 +149,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
@@ -2958,7 +2959,11 @@ private fun ReaderBottomBar(
                     }
 
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Spacer(Modifier.width(48.dp))
                         val titleLines = remember(chapterLabel) { splitChapterTitle(chapterLabel) }
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -2971,8 +2976,10 @@ private fun ReaderBottomBar(
                                 text = titleLines.first,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                             titleLines.second?.let { secondLine ->
 
@@ -2982,8 +2989,10 @@ private fun ReaderBottomBar(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = colors.secondaryText,
                                     letterSpacing = 1.2.sp,
+                                    textAlign = TextAlign.Center,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth(),
                                     autoSize = TextAutoSize.StepBased(
                                         minFontSize = 7.sp,
                                         maxFontSize = MaterialTheme.typography.labelSmall.fontSize,

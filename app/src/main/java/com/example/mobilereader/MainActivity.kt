@@ -7,27 +7,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.mobilereader.data.AppSettings
+import com.example.mobilereader.data.model.Book
+import com.example.mobilereader.ui.library.LibraryScreen
 import com.example.mobilereader.ui.reader.ReaderScreen
 import com.example.mobilereader.ui.theme.MobileReaderTheme
 import com.example.mobilereader.ui.theme.isDark
@@ -37,6 +35,30 @@ enum class VolumeKeyPhase {
     PRESS,
     REPEAT,
     RELEASE,
+}
+
+internal sealed interface BookRoute {
+    data object Library : BookRoute
+    data object Picking : BookRoute
+    data object Importing : BookRoute
+    data class Reading(val bookId: String) : BookRoute
+}
+
+internal fun initialBookRoute(
+    hasSavedState: Boolean,
+    savedBookId: String?,
+    savedRoute: String?,
+    books: List<Book>,
+): BookRoute = if (hasSavedState) {
+    when {
+        savedRoute == "picking" -> BookRoute.Picking
+        savedRoute == "importing" -> BookRoute.Library
+        savedBookId != null && books.any { it.id == savedBookId } -> BookRoute.Reading(savedBookId)
+        else -> BookRoute.Library
+    }
+} else {
+    books.maxByOrNull { it.lastOpenedAtMillis ?: it.addedAtMillis }
+        ?.let { BookRoute.Reading(it.id) } ?: BookRoute.Library
 }
 
 class MainActivity : ComponentActivity() {
@@ -50,20 +72,29 @@ class MainActivity : ComponentActivity() {
     private var volumeUpPressState: VolumePressState? = null
     private var volumeDownPressState: VolumePressState? = null
     private val readerApplication by lazy { application as MobileReaderApp }
-    private var selectedBookId by mutableStateOf<String?>(null)
-    private var loadingBook by mutableStateOf(false)
+    private var bookRoute by mutableStateOf<BookRoute>(BookRoute.Library)
+    private var restoredPickerPending = false
     private var openingProblem by mutableStateOf<String?>(null)
     private val openBookPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { selectedUri ->
-            if (selectedUri != null) importSelectedBook(selectedUri)
+            restoredPickerPending = false
+            if (selectedUri == null) {
+                bookRoute = BookRoute.Library
+            } else {
+                bookRoute = BookRoute.Importing
+                importSelectedBook(selectedUri)
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        selectedBookId = savedInstanceState?.getString("selectedBookId")
-            ?: readerApplication.bookRepository.books.value.maxByOrNull {
-                it.lastOpenedAtMillis ?: it.addedAtMillis
-            }?.id
+        bookRoute = initialBookRoute(
+            hasSavedState = savedInstanceState != null,
+            savedBookId = savedInstanceState?.getString("selectedBookId"),
+            savedRoute = savedInstanceState?.getString("bookRoute"),
+            books = readerApplication.bookRepository.books.value,
+        )
+        restoredPickerPending = bookRoute == BookRoute.Picking
         setContent {
             val appSettings by readerApplication.settingsRepository.appSettings
                 .collectAsStateWithLifecycle(initialValue = AppSettings())
@@ -79,21 +110,33 @@ class MainActivity : ComponentActivity() {
                     window.statusBarColor = colorScheme.background.toArgb()
                     window.navigationBarColor = colorScheme.background.toArgb()
                 }
-                val currentBookId = selectedBookId
-                if (currentBookId != null) {
-                    ReaderScreen(bookId = currentBookId, onBack = { selectedBookId = null })
-                } else {
-                    BookPickerScreen(
-                        loadingBook = loadingBook,
+                when (val route = bookRoute) {
+                    is BookRoute.Reading -> ReaderScreen(
+                        bookId = route.bookId,
+                        onBack = { bookRoute = BookRoute.Library },
+                    )
+                    BookRoute.Picking, BookRoute.Importing -> BookLoadingScreen()
+                    BookRoute.Library -> LibraryScreen(
+                        theme = appSettings.theme,
+                        loadingBook = false,
                         openingProblem = openingProblem,
                         onOpenBook = {
-                            openBookPicker.launch(
-                                arrayOf(
-                                    "application/epub+zip",
-                                    "application/octet-stream",
-                                    "application/zip"
-                                )
-                            )
+                            if (bookRoute == BookRoute.Library) {
+                                openingProblem = null
+                                bookRoute = BookRoute.Picking
+                                runCatching {
+                                    openBookPicker.launch(
+                                        arrayOf(
+                                            "application/epub+zip",
+                                            "application/octet-stream",
+                                            "application/zip"
+                                        )
+                                    )
+                                }.onFailure { problem ->
+                                    openingProblem = problem.message ?: "Cannot open file picker"
+                                    bookRoute = BookRoute.Library
+                                }
+                            }
                         },
                     )
                 }
@@ -102,8 +145,26 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString("selectedBookId", selectedBookId)
+        outState.putString("selectedBookId", (bookRoute as? BookRoute.Reading)?.bookId)
+        outState.putString("bookRoute", when (bookRoute) {
+            BookRoute.Library -> "library"
+            BookRoute.Picking -> "picking"
+            BookRoute.Importing -> "importing"
+            is BookRoute.Reading -> "reading"
+        })
         super.onSaveInstanceState(outState)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (restoredPickerPending) {
+            window.decorView.post {
+                if (restoredPickerPending && bookRoute == BookRoute.Picking) {
+                    restoredPickerPending = false
+                    bookRoute = BookRoute.Library
+                }
+            }
+        }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -166,48 +227,27 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun importSelectedBook(selectedUri: Uri) {
-        loadingBook = true
         openingProblem = null
         lifecycleScope.launch {
             runCatching { readerApplication.bookRepository.importEpub(selectedUri) }
-                .onSuccess { importedBook -> selectedBookId = importedBook.id }
+                .onSuccess { importedBook -> bookRoute = BookRoute.Reading(importedBook.id) }
                 .onFailure { problem ->
                     openingProblem = problem.message ?: "Cannot read this EPUB"
+                    bookRoute = BookRoute.Library
                 }
-            loadingBook = false
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun BookPickerScreen(
-    loadingBook: Boolean,
-    openingProblem: String?,
-    onOpenBook: () -> Unit,
-) {
-    Column(
+private fun BookLoadingScreen() {
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .background(MaterialTheme.colorScheme.surface),
+        contentAlignment = Alignment.Center,
     ) {
-        Text("MobileReader", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.weight(1f))
-        Text(
-            if (loadingBook) "Opening EPUB…" else "Open an EPUB to start reading",
-            style = MaterialTheme.typography.titleLarge,
-        )
-        if (openingProblem != null) Text(openingProblem, color = MaterialTheme.colorScheme.error)
-        Button(onClick = onOpenBook, enabled = !loadingBook) { Text("Open EPUB") }
-        Spacer(modifier = Modifier.weight(1f))
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun BookPickerPreview() {
-    MobileReaderTheme(com.example.mobilereader.data.AppTheme.WHITE) {
-        BookPickerScreen(loadingBook = false, openingProblem = null, onOpenBook = {})
+        LoadingIndicator()
     }
 }
